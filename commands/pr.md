@@ -30,6 +30,12 @@ No arguments. Operates on the current branch.
 6. Print the PR URL and stop. **Do not watch or merge** — the user does
    that.
 
+Step 2.5 (local check) ran during the branch session and its result is
+recorded for this branch in `.git/kimi-git-flow/local-check.json`. If
+the recorded result is `fail`, push a follow-up commit that fixes the
+failure before running `/kimi-git-flow:pr`. See
+`skills/git-flow/references/local-check.md`.
+
 ## When not to use
 
 - The PR is already open. Use `/kimi-git-flow:status` to inspect; use

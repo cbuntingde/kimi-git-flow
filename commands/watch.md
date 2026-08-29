@@ -28,6 +28,18 @@ Optional env var: `KIMI_GIT_FLOW_WATCH_TIMEOUT_MIN` (default `30`).
 5. On `timeout` exit (124) → CI is too slow. Print the timeout, leave
    the PR open, stop.
 
+When the branch has no remote CI configured (the "no required checks"
+case in `references/ci-watch.md`), print the local-check result from
+step 2.5 at the top of the output so the user has a unified picture
+of what was checked:
+
+```
+no remote CI detected; local check result was <pass|fail|skipped> at step 2.5
+```
+
+The local-check result is read from
+`.git/kimi-git-flow/local-check.json` on the current branch.
+
 ## When not to use
 
 - The user wants the full workflow end-to-end. Let the natural-language

@@ -99,6 +99,24 @@ Conventional-commit subject format: `<type>(<scope>): <subject>`. Allowed
 types: `feat`, `fix`, `refactor`, `chore`, `docs`, `test`, `perf`,
 `build`, `ci`. Keep the subject under 72 characters.
 
+### 2.5 Local check
+
+Detect the project's stack per `references/local-check.md` and run the
+matching runner against the working tree. Skip silently when
+`KIMI_GIT_FLOW_SKIP_LOCAL_CHECK=1`.
+
+- On `pass` → print the one-line summary and proceed to step 3.
+- On `fail` → print the runner output tail (last 50 lines) and abort
+  with the standard abort-message format. The user fixes the test,
+  then re-runs.
+- On `skipped` (no detectable stack or empty diff vs. the default
+  branch) → print `local check: skipped (<reason>)` and proceed. Do
+  not block.
+
+This step fires even when remote CI is configured. Remote CI is the
+source of truth for merge gating; the local check is a fast pre-push
+sanity check so obvious failures don't reach the PR.
+
 ### 3. Push and open the PR
 
 ```bash
@@ -127,6 +145,15 @@ timeout "${KIMI_GIT_FLOW_WATCH_TIMEOUT_MIN:-30}m" \
   user.
 - If `timeout` fires → CI is too slow. Leave the PR open, report the
   timeout, and stop. Do not auto-merge.
+
+When the workflow reaches step 4 with no remote CI configured (the
+"no required checks" case in `references/ci-watch.md`), print the
+local-check result from step 2.5 so the user has a unified picture of
+what was checked:
+
+```
+no remote CI detected; local check result was <pass|fail|skipped> at step 2.5
+```
 
 See `references/ci-watch.md` for the full semantics (what counts as
 "required", what to do if `--watch` is unavailable on this `gh` version).
@@ -184,6 +211,7 @@ change.** Never reuse a branch for an unrelated edit.
 | `/kimi-git-flow:merge` | 5, 6 |
 | `/kimi-git-flow:status` | read-only — print current branch, PR URL, check states |
 | `/kimi-git-flow:back-to-main` | 6 only (no merge; abandons current branch) |
+| `/kimi-git-flow:setup-ci` | one-shot bootstrapper — drafts `.github/workflows/ci.yml`, requires user approval, opens a PR. Outside the 0→7 procedure. |
 
 The slash commands are escape hatches — the natural-language workflow is
 the default entry point. Read each command's body for exact behavior.
@@ -198,6 +226,8 @@ Read these env vars at run time:
 | `KIMI_GIT_FLOW_MERGE_STRATEGY` | `squash` | `squash` / `rebase` / `merge`. |
 | `KIMI_GIT_FLOW_DELETE_REMOTE_BRANCH` | `0` | When `1`, pass `--delete-branch` to `gh pr merge`. Default `0` keeps the remote branch. |
 | `KIMI_GIT_FLOW_BASE_BRANCH` | _(auto-detect from `gh`)_ | Override default branch. |
+| `KIMI_GIT_FLOW_SKIP_LOCAL_CHECK` | `0` | When `1`, skip step 2.5 entirely. |
+| `KIMI_GIT_FLOW_LOCAL_CHECK_TIMEOUT` | `300` | Per-check timeout in seconds for step 2.5. |
 
 ## Output contract
 
@@ -217,5 +247,7 @@ user should take. Do not print a wall of debug output.
 - `references/branch-naming.md` — slug rules and collision handling.
 - `references/pr-template.md` — PR body template.
 - `references/ci-watch.md` — CI wait semantics.
+- `references/local-check.md` — step 2.5 detection + runner matrix.
+- `references/setup-ci.md` — `/kimi-git-flow:setup-ci` scaffold logic.
 - `references/merge-strategy.md` — squash vs. rebase vs. merge.
 - `references/safety.md` — hard rules and abort conditions.

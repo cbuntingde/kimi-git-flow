@@ -1,7 +1,7 @@
 # kimi-git-flow
 
 ![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![Version](https://img.shields.io/badge/version-0.2.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Kimi_Code-7e57c2)
 ![GitHub](https://img.shields.io/badge/github-cbuntingde%2Fkimi--git--flow-181717?logo=github)
 
@@ -19,6 +19,15 @@ checks to pass, and lands the change for you.
 - **Hands-off landing.** The plugin waits for your automated checks (the
   tests and other checks GitHub runs on your behalf) to pass, then lands
   the change and switches your workspace back to the main line of work.
+- **Local sanity check.** Even if your repository has no automated
+  checks configured, the plugin detects your project's stack (Node,
+  Python, Rust, Go, or Make) and runs the equivalent of CI on the
+  working tree before pushing — so obvious failures don't reach the
+  review request.
+- **Optional CI scaffold.** If your repo has no `.github/workflows/`
+  file at all, you can ask the plugin to propose a minimal one with
+  `/kimi-git-flow:setup-ci`. It shows you the file before writing
+  anything and waits for your approval.
 - **Remote branches kept by default.** After a change lands, its branch
   stays on GitHub so you can revisit, audit, or point someone at the
   exact line of work it came from.
@@ -76,6 +85,7 @@ automatically when you ask for a change.
 | `/kimi-git-flow:merge` | Land the change and return your workspace to the main line of work. |
 | `/kimi-git-flow:status` | Show the current branch, review-request URL, and check status. Read-only. |
 | `/kimi-git-flow:back-to-main` | Abandon the current branch and return to the main line of work. |
+| `/kimi-git-flow:setup-ci` | Propose a minimal `.github/workflows/ci.yml` matching your stack and open a review request for it. Opt-in only — never runs automatically. |
 
 ## Configuration
 
@@ -87,6 +97,8 @@ All settings are optional. The defaults work for most repositories.
 | `KIMI_GIT_FLOW_MERGE_STRATEGY` | `squash` | How to land the change. `squash` collapses it into one commit; `rebase` keeps every commit; `merge` adds a merge commit. |
 | `KIMI_GIT_FLOW_DELETE_REMOTE_BRANCH` | `0` | Set to `1` to delete the branch on GitHub after the change lands. Default `0` keeps it. |
 | `KIMI_GIT_FLOW_BASE_BRANCH` | _(auto-detect)_ | Override which branch counts as the main line of work. |
+| `KIMI_GIT_FLOW_SKIP_LOCAL_CHECK` | `0` | Set to `1` to skip the local sanity check that runs before pushing. The plugin still reads it on `/status`, `/watch`, and `/merge`. |
+| `KIMI_GIT_FLOW_LOCAL_CHECK_TIMEOUT` | `300` | Per-check timeout, in seconds, for the local sanity check. |
 
 ## Limitations
 

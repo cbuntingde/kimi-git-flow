@@ -25,12 +25,17 @@ In order:
 3. **Current branch**: from `git rev-parse --abbrev-ref HEAD`.
 4. **Is current branch the default?**: yes/no.
 5. **Working tree state**: clean / N files dirty (from `git status --porcelain | wc -l`).
-6. **PR for current branch** (if not the default branch):
+6. **Local check (step 2.5)**: the recorded result for this branch from
+   `.git/kimi-git-flow/local-check.json`, printed as
+   `stack=<...> command="<cmd>" result=<pass|fail|skipped> duration=<Ns>`.
+   Absent when no check has run on this branch yet. See
+   `skills/git-flow/references/local-check.md`.
+7. **PR for current branch** (if not the default branch):
    - PR number, state (open/closed/merged), URL.
    - Commits ahead of default: `git rev-list --count origin/<default>..HEAD`.
    - Check states from `gh pr checks --json name,state`:
      - one line per check, color-coded by state.
-7. **Last action**: the most recent thing the workflow did on this
+8. **Last action**: the most recent thing the workflow did on this
    branch (e.g. `pushed`, `opened PR #42`, `merged via PR #42`).
    Tracked in a per-session note; absent on a fresh session.
 

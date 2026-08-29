@@ -51,6 +51,9 @@ Optional env vars:
   `/kimi-git-flow:back-to-main` instead.
 - Branch protection requires a review the user does not have. Surface
   the missing reviewers and stop.
+- The local check (step 2.5) failed on this branch — the result is
+  visible in `/kimi-git-flow:status`. Fix the failing check, push a
+  follow-up commit, and retry.
 
 ## Safety
 

@@ -1,17 +1,17 @@
 {
   "name": "kimi-git-flow",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Kimi Code plugin that turns every code change into a clean, reviewable update on GitHub.",
   "license": "Apache-2.0",
   "skills": "./skills/",
   "sessionStart": { "skill": "git-flow" },
-  "skillInstructions": "When the user asks for a code change in a git repo, follow the kimi-git-flow procedure: create a fresh branch named `kimi/<slug>` from the default branch, commit the change on it, push and open a pull request with `gh pr create --fill`, wait for required checks with `gh pr checks --watch`, then land the change with `gh pr merge --squash` once green (the remote branch is kept by default; pass `--delete-branch` only when `KIMI_GIT_FLOW_DELETE_REMOTE_BRANCH=1`), and switch the working copy back to the default branch. Never force-push the default branch; never merge a pull request with failing checks; never skip branch-protection rules.",
+  "skillInstructions": "When the user asks for a code change in a git repo, follow the kimi-git-flow procedure: create a fresh branch named `kimi/<slug>` from the default branch, commit the change on it, run the local check (step 2.5) against the working tree, push and open a pull request with `gh pr create --fill`, wait for required checks with `gh pr checks --watch`, then land the change with `gh pr merge --squash` once green (the remote branch is kept by default; pass `--delete-branch` only when `KIMI_GIT_FLOW_DELETE_REMOTE_BRANCH=1`), and switch the working copy back to the default branch. Never force-push the default branch; never merge a pull request with failing checks; never skip branch-protection rules. The local check fires even when remote CI is configured; skip it with `KIMI_GIT_FLOW_SKIP_LOCAL_CHECK=1`. To scaffold a missing CI workflow, the user runs `/kimi-git-flow:setup-ci` explicitly — never auto-generated.",
   "hooks": [],
   "commands": "./commands/",
   "interface": {
     "displayName": "Git Flow",
     "shortDescription": "Branch → pull request → wait for checks → land, one branch per change.",
-    "longDescription": "Kimi Code plugin that turns every code change into a clean, reviewable update on GitHub. Creates an isolated branch, opens a pull request, waits for the required checks, and lands the change automatically. Exposes slash commands (/branch, /pr, /watch, /merge, /status, /back-to-main) for fine-grained control. GitHub-only; uses `gh` and `git` directly.",
+    "longDescription": "Kimi Code plugin that turns every code change into a clean, reviewable update on GitHub. Creates an isolated branch, runs a local check against the working tree, opens a pull request, waits for the required checks, and lands the change automatically. Exposes slash commands (/branch, /pr, /watch, /merge, /status, /back-to-main, /setup-ci) for fine-grained control. /setup-ci is opt-in and scaffolds a minimal GitHub Actions workflow when the repo has none. GitHub-only; uses `gh` and `git` directly.",
     "developerName": "kimi-git-flow"
   }
 }
