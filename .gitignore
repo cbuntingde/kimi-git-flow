@@ -1,0 +1,39 @@
+# Dependencies / build artifacts
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Kimi Code runtime artifacts
+.kimi/
+.kimi-code/
+.kimi-cache/
+
+# Local plugin overrides (never committed)
+plugins.local.json
+
+# Env files (secrets must never land in the repo)
+.env
+.env.*
+!.env.example
+
+# Python venv (in case anyone runs the optional helpers locally)
+__pycache__/
+*.pyc
+.venv/
+venv/

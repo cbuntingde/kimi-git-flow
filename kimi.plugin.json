@@ -1,0 +1,17 @@
+{
+  "name": "kimi-git-flow",
+  "version": "0.1.0",
+  "description": "Branch-per-task workflow: create a branch, open a PR, wait for CI to be green, merge, and switch back to the default branch. One branch per phase, task, or general code change. Drives `gh` and `git` directly via Bash; no MCP server.",
+  "license": "Apache-2.0",
+  "skills": "./skills/",
+  "sessionStart": { "skill": "git-flow" },
+  "skillInstructions": "When the user asks for a code change in a git repo, follow the kimi-git-flow procedure: create a branch named `kimi/<slug>` from the default branch, commit on it, push, open a PR with `gh pr create --fill`, wait for required checks with `gh pr checks --watch`, then `gh pr merge --squash` once green (the remote branch is kept by default; pass `--delete-branch` only when `KIMI_GIT_FLOW_DELETE_REMOTE_BRANCH=1`), and switch the working copy back to the default branch. One branch per phase / task / standalone change. Never force-push the default branch; never merge a red PR; never skip branch-protection rules.",
+  "hooks": [],
+  "commands": "./commands/",
+  "interface": {
+    "displayName": "Git Flow",
+    "shortDescription": "Branch → PR → wait for green → merge, one branch per task.",
+    "longDescription": "Drives the standard branch-and-PR workflow against GitHub using `gh` and `git`. Creates a branch per phase, task, or general code change; opens a PR; waits for required CI checks; merges when green and returns to the default branch. Exposes slash commands (/branch, /pr, /watch, /merge, /status, /back-to-main) for fine-grained control. GitHub-only; uses `gh` for everything.",
+    "developerName": "kimi-git-flow"
+  }
+}
