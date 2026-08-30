@@ -92,6 +92,25 @@ The user is expected to override `PYTHON_VERSION` via
 Python. The default `3.12` matches what `setup-python` ships as
 current.
 
+## Overriding the pinned toolchain version
+
+The generated workflows read their toolchain version from GitHub
+Actions variables (`vars.NODE_VERSION`, `vars.PYTHON_VERSION`,
+`vars.GO_VERSION`) so the user can pin a project-specific version
+without editing the YAML. A few scope notes that bite users:
+
+- GitHub Actions **variables** (`vars.*`) are read at the
+  **organization, repository, or environment** level — *not* per
+  workflow run and *not* per branch. They cannot be set on a PR. If
+  you need a different version on a specific branch, edit the
+  workflow file directly instead.
+- The variables are optional. If unset, the workflow falls back to
+  the default (`20` / `3.12` / `1.23`). The defaults are deliberately
+  conservative; they are not auto-upgraded.
+- Variable names are case-sensitive on the GitHub side and must match
+  exactly what the workflow reads (`NODE_VERSION`, `PYTHON_VERSION`,
+  `GO_VERSION`).
+
 ## Generated workflow — Rust
 
 ```yaml

@@ -23,17 +23,12 @@ Thumbs.db
 .kimi/
 .kimi-code/
 .kimi-cache/
-
-# Local plugin overrides (never committed)
-plugins.local.json
+# Note: `plugins.local.json` lives in the user's Kimi Code config dir
+# (`~/.kimi-code/`), not in this repo, so it does not belong here.
+# Add it to `~/.kimi-code/.gitignore` if you manage that dir with git.
 
 # Env files (secrets must never land in the repo)
 .env
 .env.*
 !.env.example
 
-# Python venv (in case anyone runs the optional helpers locally)
-__pycache__/
-*.pyc
-.venv/
-venv/

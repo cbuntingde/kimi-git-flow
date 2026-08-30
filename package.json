@@ -4,8 +4,11 @@
   "description": "Branch-per-task workflow plugin for Kimi Code.",
   "type": "module",
   "private": true,
+  "license": "Apache-2.0",
   "engines": {
     "node": ">=20"
   },
-  "license": "Apache-2.0"
+  "scripts": {
+    "test": "node --test test/smoke.test.mjs"
+  }
 }

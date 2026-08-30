@@ -11,12 +11,16 @@ modifies commits and never rewrites the runner's output.
 
 ## When this runs
 
-Step 2.5 of the main procedure (`skill/SKILL.md`), between committing
-the change (step 2) and pushing/opening the PR (step 3).
+Step 2.5 of the main procedure (`skills/git-flow/SKILL.md`), between committing
 
-It runs **once per branch**, against the working tree as committed by
-step 2. It does not re-run on follow-up commits — the user pushes a
-follow-up commit and the check fires again on the next workflow run.
+It runs **once per workflow invocation against the current working
+tree**, i.e. the state of the branch as last committed (step 2) or
+as last amended. A follow-up commit on the same branch does not
+automatically re-trigger the check inside the same run — but a
+*new* workflow run on the same branch (e.g. the user runs
+`/kimi-git-flow:pr` again to push a follow-up, or `/merge` re-reads
+the result) sees the fresh working tree and re-executes the runner
+from scratch. Cached results across runs are not honoured.
 
 ## When this is skipped
 

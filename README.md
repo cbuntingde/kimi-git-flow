@@ -57,7 +57,10 @@ Then reload and confirm:
   gh auth status
   ```
 
-- A git repository hosted on GitHub.
+- A git repository hosted on **github.com**. GitHub Enterprise Server,
+  GitLab, Bitbucket, and self-hosted GHE instances are **not** supported
+  in this release; `gh` auth must succeed against `github.com` for the
+  workflow to run end-to-end.
 
 ## Quick start
 
@@ -102,9 +105,6 @@ All settings are optional. The defaults work for most repositories.
 
 ## Limitations
 
-- **GitHub only.** This version works with GitHub repositories hosted on
-  github.com. Other hosts (GitLab, Bitbucket, self-hosted GitHub
-  Enterprise) are not supported in this release.
 - **One change at a time.** The plugin handles a single change end to
   end before starting the next. If you ask for several changes, they
   run one after another.

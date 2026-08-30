@@ -23,18 +23,21 @@ No arguments. Operates on the current branch.
    a PR from the default branch against itself).
 2. Confirm there is at least one commit on the branch ahead of the
    default branch (`git rev-list --count origin/<default>..HEAD` ≥ 1).
-3. `git push -u origin <branch>`.
-4. Build the PR body from `references/pr-template.md`.
-5. `gh pr create --base <default> --head <branch> --title <human> --body-file <body>`.
+3. Run step 2.5 — the local check — against the working tree if the
+   branch has a detectable stack and a non-empty diff. The result is
+   recorded in `.git/kimi-git-flow/local-check.json` for `/status`,
+   `/watch`, and `/merge` to read. See
+   `skills/git-flow/references/local-check.md`. Skip when
+   `KIMI_GIT_FLOW_SKIP_LOCAL_CHECK=1`. This step is always part of
+   `/pr` so the guarantee holds whether the user got here via
+   `/branch` + manual edits or via the natural-language workflow.
+4. `git push -u origin <branch>`.
+5. Build the PR body from
+   `skills/git-flow/references/pr-template.md`.
+6. `gh pr create --base <default> --head <branch> --title <human> --body-file <body>`.
    Fall back to `--fill` for trivial single-commit changes.
-6. Print the PR URL and stop. **Do not watch or merge** — the user does
+7. Print the PR URL and stop. **Do not watch or merge** — the user does
    that.
-
-Step 2.5 (local check) ran during the branch session and its result is
-recorded for this branch in `.git/kimi-git-flow/local-check.json`. If
-the recorded result is `fail`, push a follow-up commit that fixes the
-failure before running `/kimi-git-flow:pr`. See
-`skills/git-flow/references/local-check.md`.
 
 ## When not to use
 
@@ -45,9 +48,9 @@ failure before running `/kimi-git-flow:pr`. See
 ## Safety
 
 Same hard rules as the main skill: no `--admin`, no `--force`,
-`references/safety.md` applies. If `gh pr create` fails because branch
-protection requires a base branch update or signed commits, surface the
-error and stop.
+`skills/git-flow/references/safety.md` applies. If `gh pr create` fails
+because branch protection requires a base branch update or signed
+commits, surface the error and stop.
 
 ## See also
 

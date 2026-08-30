@@ -15,15 +15,15 @@ user on the new branch with a clean working tree.
 ```
 
 If `<slug>` is omitted, derive one from the most recent user message
-(see `references/branch-naming.md`).
+(see `skills/git-flow/references/branch-naming.md`).
 
 ## What this does
 
-1. Preflight (see `skill/SKILL.md` step 0): confirm git repo, `gh auth`,
-   clean working tree, and detect default branch.
-2. Build the slug per `references/branch-naming.md`. Strip leading
-   `kimi/` if present. Cap at 48 chars. Append `-2`, `-3`, ... on
-   collision.
+1. Preflight (see `skills/git-flow/SKILL.md` step 0): confirm git repo,
+   `gh auth`, clean working tree, and detect default branch.
+2. Build the slug per
+   `skills/git-flow/references/branch-naming.md`. Strip leading `kimi/`
+   if present. Cap at 48 chars. Append `-2`, `-3`, ... on collision.
 3. `git fetch origin <default-branch>`.
 4. `git checkout -b kimi/<slug> origin/<default-branch>`.
 5. Print the resolved branch name and stop. **Do not commit, push, or
@@ -44,4 +44,5 @@ authenticated, it prints the exact `gh auth login` command and stops.
 ## See also
 
 - `/kimi-git-flow:pr` — push and open the PR for the current branch.
-- `skill/SKILL.md` step 0–1 — full preflight + branch creation logic.
+- `skills/git-flow/SKILL.md` step 0–1 — full preflight + branch
+  creation logic.

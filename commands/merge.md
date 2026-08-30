@@ -1,6 +1,6 @@
 ---
 name: merge
-description: Merge the current branch's PR (squash by default), keep the remote branch by default, tidy the local copy, and switch the working copy back to the default branch. Use when CI is green and you're ready to land.
+description: Merge the current branch's PR with the configured strategy and return to the default branch. Local check + CI must be green.
 ---
 
 # /kimi-git-flow:merge
@@ -26,20 +26,31 @@ Optional env vars:
 
 1. Confirm there is an open PR for the current branch and it is
    mergeable (`gh pr view --json mergeable,state`).
-2. Run `gh pr checks` one more time. If any required check is failing
+2. Read the local-check result for the current branch from
+   `.git/kimi-git-flow/local-check.json`. Verify the recorded `branch`
+   field equals the current branch (the file is per-branch but lives
+   in shared `.git/` storage; a stale entry from an abandoned branch
+   must not block a fresh merge). If the file is missing, the local
+   check never ran on this branch — refuse unless
+   `KIMI_GIT_FLOW_SKIP_LOCAL_CHECK=1` is set. If the recorded
+   `result` is `fail`, refuse: the user must push a follow-up commit
+   that fixes the failing check (the workflow re-runs the local check
+   on the next run) before retrying. See
+   `skills/git-flow/references/local-check.md`.
+3. Run `gh pr checks` one more time. If any required check is failing
    or pending, abort with the failing check name. The user must wait
    for green or fix the check.
-3. `gh pr merge --<strategy> [--delete-branch] --body "Merged by kimi-git-flow"`.
+4. `gh pr merge --<strategy> [--delete-branch] --body "Merged by kimi-git-flow"`.
    Default strategy is `squash`. `--delete-branch` is appended only when
    `KIMI_GIT_FLOW_DELETE_REMOTE_BRANCH=1`; otherwise the remote branch
    is kept.
-4. `git checkout <default-branch>`.
-5. `git pull --ff-only`. If `--ff-only` fails (remote moved during CI
+5. `git checkout <default-branch>`.
+6. `git pull --ff-only`. If `--ff-only` fails (remote moved during CI
    wait), surface the divergence and stop — user decides how to
    reconcile.
-6. `git branch -d <branch>` to tidy the local copy (always runs,
+7. `git branch -d <branch>` to tidy the local copy (always runs,
    regardless of `--delete-branch`).
-7. Print one of:
+8. Print one of:
    - `merged kimi/<slug> → <default-branch> via PR #<n> (remote branch kept)`
    - `merged kimi/<slug> → <default-branch> via PR #<n> (remote branch deleted)`
    and stop.
@@ -62,9 +73,10 @@ Optional env vars:
 - Refuses to run if the current branch is the default branch.
 - Refuses to run if there is no open PR for the current branch.
 
-See `references/safety.md` for the full rule set.
+See `skills/git-flow/references/safety.md` for the full rule set.
 
 ## See also
 
 - `/kimi-git-flow:watch` — confirm CI is green before merging.
-- `references/merge-strategy.md` — squash vs. rebase vs. merge.
+- `skills/git-flow/references/merge-strategy.md` — squash vs. rebase
+  vs. merge.

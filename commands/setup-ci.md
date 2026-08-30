@@ -1,6 +1,6 @@
 ---
 name: setup-ci
-description: Scaffold a minimal `.github/workflows/ci.yml` matching the detected stack and open a PR. Opt-in only — never auto-runs as part of the branch → PR → merge workflow. Use when the repo has no CI configured and you want the workflow to propose one.
+description: One-shot opt-in: scaffold a minimal `.github/workflows/ci.yml` for the detected stack and open a PR. Never auto-runs.
 ---
 
 # /kimi-git-flow:setup-ci
@@ -23,10 +23,10 @@ No arguments. No env vars.
    detect default branch.
 2. Refuse if `.github/workflows/ci.yml` already exists. The user
    deletes it manually first if they want to overwrite.
-3. Detect the stack per `references/setup-ci.md`. If no stack is
-   detectable (no `package.json`, no `pyproject.toml`, no
-   `Cargo.toml`, no `go.mod`), abort — the user authors the
-   workflow themselves.
+3. Detect the stack per
+   `skills/git-flow/references/setup-ci.md`. If no stack is detectable
+   (no `package.json`, no `pyproject.toml`, no `Cargo.toml`, no
+   `go.mod`), abort — the user authors the workflow themselves.
 4. Render the workflow content into a temp file under the working
    tree (NOT yet committed) and print the full content to the chat.
 5. Wait for explicit user approval. One of:
@@ -59,6 +59,18 @@ land it.
 - Never passes `--admin` to `gh pr merge` (it doesn't merge anyway).
 - Never bypasses branch protection on the resulting PR.
 - Refuses to run from a non-git repo or with `gh` unauthenticated.
+
+## Known limitation: approval parsing
+
+The "wait for explicit user approval" gate relies on the agent
+correctly interpreting free-form chat for `yes`, `no`, or silence.
+The agent does not run deterministically — borderline phrases
+(`yep` without a body, `sure, looks right`, emoji-only replies) may
+be parsed as approval when the user meant otherwise. If a misread is
+critical, the user can revoke by deleting the uncommitted workflow
+file before any push happens, since `git add`/`git commit` only fire
+after the explicit "yes". Do not rely on this gate as a hard safety
+boundary — it is a friction reducer, not a permission system.
 
 ## See also
 

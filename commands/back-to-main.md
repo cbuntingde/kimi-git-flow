@@ -50,4 +50,5 @@ branch is left intact.
 ## See also
 
 - `/kimi-git-flow:merge` — if the branch is worth keeping.
-- `references/safety.md` — hard rules (no `--force`, no skipping).
+- `skills/git-flow/references/safety.md` — hard rules (no `--force`, no
+  skipping).

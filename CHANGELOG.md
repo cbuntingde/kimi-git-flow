@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0] — 2026-XX-XX
+## [0.2.0] — 2026-08-29
 
 ### Added
 
@@ -27,7 +27,7 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The local check is observation, not gating: it aborts the workflow on
   failure (same as a red CI check) but never modifies commits.
 
-## [0.1.0] — 2026-XX-XX
+## [0.1.0] — 2026-08-29
 
 ### Added
 

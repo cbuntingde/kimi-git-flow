@@ -1,6 +1,6 @@
 ---
 name: git-flow
-description: Branch-per-task workflow for git repos on GitHub. Use when the user asks to "create a branch", "open a PR", "merge when green", "branch per task", "auto-merge PR", "branch-and-PR workflow", or any natural-language request that means "make this change on a fresh branch and ship it". One branch per phase, task, or general code change. Drives `gh` and `git` directly via Bash.
+description: Branch-per-change GitHub workflow: fresh branch → commit → local check → push → PR → wait for CI → merge → return to default. Drives `gh` and `git` via Bash.
 license: Apache-2.0
 compatibility: Requires git and gh (GitHub CLI) on PATH, with `gh auth status` succeeding for the target repo's host. Targets Kimi Code CLI >= 1.0.
 metadata:
@@ -139,12 +139,20 @@ timeout "${KIMI_GIT_FLOW_WATCH_TIMEOUT_MIN:-30}m" \
   gh pr checks --watch --interval 30
 ```
 
-- If `--watch` exits 0 → all required checks are green. Proceed.
-- If `--watch` exits non-zero → at least one check is failing. Surface the
-  failing check name and the URL. **Do not merge.** Stop and wait for the
-  user.
-- If `timeout` fires → CI is too slow. Leave the PR open, report the
-  timeout, and stop. Do not auto-merge.
+Exit-code handling for `gh pr checks --watch`:
+
+| Exit | Meaning | Workflow action |
+|---|---|---|
+| 0 | All required checks passed. | Proceed to merge. |
+| 1 | One or more required checks failed. | Surface the failing check name and the run URL. **Do not merge.** |
+| 8 | `gh` itself errored (network, auth). | Re-run once; if it persists, surface the `gh` error to the user. |
+| 124 (from `timeout`) | Wall-clock deadline fired before checks resolved. | Leave the PR open, report the timeout, stop. |
+
+Fallback when `--watch` is unavailable (older `gh` < 2.40 emits
+"unknown flag"): poll `gh pr checks --json state` every 30 s until all
+checks reach a terminal state, then fail if any are `FAILURE`. See
+`references/ci-watch.md` for the exact polling loop. Always try
+`--watch` first; only fall back when `gh` explicitly rejects the flag.
 
 When the workflow reaches step 4 with no remote CI configured (the
 "no required checks" case in `references/ci-watch.md`), print the
