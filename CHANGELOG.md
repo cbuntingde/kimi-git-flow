@@ -19,9 +19,9 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   default branch): step 0 preflight now refuses to proceed if the
   local default branch is ahead of `origin/<default-branch>` by any
   number of unpushed commits. The user is shown the exact
-  reconciliation commands and the workflow stops.
-
-### Changed
+  commands and the workflow stops. Preflight now prints the
+  exact commit list of unpushed commits (so the user can decide
+  whether they are worth keeping) instead of just refusing.
 
 - `lastAction` enum no longer includes `pushed`. Push and PR opening are
   step 3 in the main procedure, so `pr-opened` covers both. `state.md`

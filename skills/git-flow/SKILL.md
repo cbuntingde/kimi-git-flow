@@ -55,7 +55,6 @@ gh auth status
 test -z "$(git status --porcelain)"
 
 # Detect the default branch (do NOT assume "main").
-gh repo view --json defaultBranchRef -q .defaultBranchRef.name
 DEFAULT_BRANCH=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)
 
 # Confirm local default branch is in sync with origin. Refuse to
@@ -63,16 +62,23 @@ DEFAULT_BRANCH=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)
 # `references/safety.md`. This gate prevents the agent from
 # stashing or resetting the user's unmerged work to "make the
 # build green."
-test -z "$(git log --oneline origin/${DEFAULT_BRANCH}..${DEFAULT_BRANCH})"
+unpushed=$(git log --oneline origin/${DEFAULT_BRANCH}..${DEFAULT_BRANCH})
+if [ -n "$unpushed" ]; then
+  echo "unpushed commits on ${DEFAULT_BRANCH}:"
+  echo "$unpushed"
+  echo "aborted: local ${DEFAULT_BRANCH} is ahead of origin/${DEFAULT_BRANCH}. Push, rebase, or drop them before starting a new branch."
+  exit 1
+fi
 ```
 
 If any of these fail, abort with a clear message. For a dirty
 working tree, offer `git stash` or "commit your existing changes
 first" and wait for the user. For unpushed local commits on the
-default branch, surface the exact reconciliation commands
-(`git push origin <default>`, `git rebase origin/<default>`, or
-`git reset --hard origin/<default>`) and wait — the agent does
-not pick one on the user's behalf.
+default branch, the preflight prints the exact commit list (so
+the user can decide whether the work is worth keeping) and the
+reconciliation commands (`git push origin <default>`,
+`git rebase origin/<default>`, or `git reset --hard origin/<default>`)
+and stops — the agent does not pick one on the user's behalf.
 
 ### 1. Create the branch
 
@@ -240,14 +246,13 @@ preference:
    git log --oneline HEAD..origin/<default-branch>   # remote-only
    ```
 
-   If `local-only` is non-empty AND those commits are not on
-   `origin`, **stop and ask the user.** This is rule 11 (no
-   silent revert) and rule 12 (no dropping unpushed work) in
-   `references/safety.md`. The agent does not pick option 3 on
-   the user's behalf.
+   If `local-only` is non-empty, **stop and ask the user.**
+   This is rule 11 (no silent revert) and rule 12 (no dropping
+   unpushed work) in `references/safety.md`.
 
-The workflow prints the exact diagnostic and the chosen option's
-command, then stops. The user runs the command.
+The workflow prints the exact diagnostic and all three options, then
+stops. The user runs the chosen option's command themselves; the
+agent does not pick on the user's behalf.
 
 ### 7. Loop
 

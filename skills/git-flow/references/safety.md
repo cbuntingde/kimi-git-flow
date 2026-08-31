@@ -79,7 +79,6 @@ rule has a clear, user-visible abort message.
     good), or branching off it (where the branch base no longer
     matches what the user expects on `origin`).
 
-
 ## Soft rules (warn but proceed)
 
 1. **Empty PR body.** The workflow falls back to `gh pr create --fill`

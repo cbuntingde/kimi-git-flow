@@ -31,6 +31,24 @@
 //  10. Dry-run — `/branch`, `/pr`, and `/merge` must each document a
 //      `--dry-run` flag in their Usage section so the audit path is
 //      always available.
+//  11. Rule 11/12 — `references/safety.md` documents "no silent
+//      revert" (forbidding `git checkout --`, `git reset --hard`,
+//      `git stash drop`, `git clean -fd` mid-workflow) and "no
+//      branching off a divergent default branch". The forbidden
+//      verbs must appear literally so the rule can't be silently
+//      weakened.
+//  12. Preflight gate — SKILL.md step 0 includes a `git log` check
+//      comparing local vs origin default branch and refuses to
+//      proceed on unpushed commits. Catches drift that would
+//      resurrect the silent-revert failure mode.
+//  13. Step 6 recovery — SKILL.md step 6 documents all three
+//      divergence-recovery paths (`--rebase`, `--no-rebase`,
+//      `reset --hard`) with the reset safety gate spelled out and
+//      cross-references to rules 11 and 12.
+//  14. Soft-rule 4 reset gate — safety.md soft-rule 4 gates
+//      `git reset --hard` on every local commit being reachable
+//      from `origin/<default-branch>`. Catches drift that would
+//      let the agent silently discard the user's commits.
 //
 // Run with `npm test`. Node 20+.
 
@@ -397,9 +415,8 @@ test("SKILL.md preflight refuses to proceed when local default branch has unpush
   const md = read("skills/git-flow/SKILL.md");
   const preflight = md.split("### 1. Create the branch")[0];
   assert.ok(
-    /origin\/\$\{?DEFAULT_BRANCH\}?\.\.\$\{?DEFAULT_BRANCH\}?/.test(preflight) ||
-      /origin\/<default-branch>\.\.<default-branch>/.test(preflight),
-    "SKILL.md preflight must include a git log check that compares local and origin default branches",
+    /origin\/\$\{DEFAULT_BRANCH\}\.\.\$\{DEFAULT_BRANCH\}/.test(preflight),
+    "SKILL.md preflight must include a git log check that uses ${DEFAULT_BRANCH} to compare local and origin default branches (no plain-text fallback)",
   );
   assert.ok(
     /unpushed/.test(preflight) || /ahead of/.test(preflight),
@@ -412,8 +429,8 @@ test("SKILL.md preflight refuses to proceed when local default branch has unpush
 });
 
 test("SKILL.md step 6 documents all three divergence-recovery options (rebase / merge / reset) with the reset safety gate", () => {
- const md = read("skills/git-flow/SKILL.md");
- const step6 = md.split("### 7. Loop")[0];
+  const md = read("skills/git-flow/SKILL.md");
+  const step6 = md.split("### 7. Loop")[0];
   for (const opt of ["--rebase", "--no-rebase", "reset --hard"]) {
     assert.ok(
       step6.includes(opt),
@@ -421,7 +438,7 @@ test("SKILL.md step 6 documents all three divergence-recovery options (rebase / 
     );
   }
   // The reset path must cross-reference rules 11 and 12 so the
- // safety contract is enforced.
+  // safety contract is enforced.
   assert.ok(
     /rule 11/.test(step6) && /rule 12/.test(step6),
     "SKILL.md step 6's reset option must cross-reference safety.md rules 11 and 12",
