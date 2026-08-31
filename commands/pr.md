@@ -12,10 +12,17 @@ branch exists, commits made).
 ## Usage
 
 ```text
-/kimi-git-flow:pr
+/kimi-git-flow:pr [--dry-run]
 ```
 
 No arguments. Operates on the current branch.
+
+`--dry-run` runs the preflight checks and step 2.5 (local check)
+*without* pushing or opening a PR, then prints the exact `git push`
+and `gh pr create` invocations the command would run. Use this when
+you want to see the PR body and the remote call shape before
+touching `origin`. The local check itself still runs — `--dry-run`
+does not skip step 2.5.
 
 ## What this does
 

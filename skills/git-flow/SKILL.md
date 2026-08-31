@@ -237,6 +237,30 @@ Read these env vars at run time:
 | `KIMI_GIT_FLOW_SKIP_LOCAL_CHECK` | `0` | When `1`, skip step 2.5 entirely. |
 | `KIMI_GIT_FLOW_LOCAL_CHECK_TIMEOUT` | `300` | Per-check timeout in seconds for step 2.5. |
 
+## State persistence
+
+After every successful step, write
+`.git/kimi-git-flow/state.json` with the schema in
+`references/state.md`. The values are:
+
+| Step | `lastAction` |
+|---|---|
+| 1 (branch created) | `branched` |
+| 2 (commit made) | `committed` |
+| 3 (push + PR open) | `pr-opened` (+ `prNumber`, `prUrl`) |
+| 4 (CI green) | `watched-green` (+ `prNumber`, `prUrl`) |
+| 5 (merged) | `merged` (+ `prNumber`, `prUrl`) |
+| `/back-to-main` | `abandoned` |
+
+Push and PR opening are a single step (step 3) and produce one value,
+`pr-opened`. A separate `pushed` value is not used. See
+`references/state.md` for the full schema and rationale.
+
+The local-check result is written separately to
+`.git/kimi-git-flow/local-check.json` (see `local-check.md`). State
+writes are best-effort: if the disk write fails, the workflow
+continues — never block on state persistence.
+
 ## Output contract
 
 When the workflow completes successfully, print a one-line summary. The

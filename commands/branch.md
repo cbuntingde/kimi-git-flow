@@ -9,13 +9,17 @@ Run steps 0 and 1 of the kimi-git-flow procedure and stop. Leaves the
 user on the new branch with a clean working tree.
 
 ## Usage
-
 ```text
-/kimi-git-flow:branch <slug>
+/kimi-git-flow:branch <slug> [--dry-run]
 ```
 
 If `<slug>` is omitted, derive one from the most recent user message
 (see `skills/git-flow/references/branch-naming.md`).
+
+`--dry-run` runs the preflight, slug derivation, and collision check
+as normal, then prints the exact `git`/`gh` invocations the command
+*would* run, without mutating the repo. Use this when you want to
+audit what the procedure will do without committing a branch.
 
 ## What this does
 

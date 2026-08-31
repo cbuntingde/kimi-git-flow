@@ -35,9 +35,12 @@ In order:
    - Commits ahead of default: `git rev-list --count origin/<default>..HEAD`.
    - Check states from `gh pr checks --json name,state`:
      - one line per check, color-coded by state.
-8. **Last action**: the most recent thing the workflow did on this
-   branch (e.g. `pushed`, `opened PR #42`, `merged via PR #42`).
-   Tracked in a per-session note; absent on a fresh session.
+8. **Last action**: the most recent step this workflow ran on the current
+   branch. Read from `.git/kimi-git-flow/state.json` (gitignored).
+   Values: `branched`, `committed`, `pr-opened`, `watched-green`,
+   `merged`, `abandoned`, or `null` when no run has happened on this
+   branch yet. The enum covers both push and PR opening under a single
+   value (`pr-opened`); see `skills/git-flow/references/state.md`.
 
 The output is plain text, suitable for pasting back to the user.
 

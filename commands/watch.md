@@ -19,7 +19,15 @@ Optional env var: `KIMI_GIT_FLOW_WATCH_TIMEOUT_MIN` (default `30`).
 ## What this does
 
 1. Confirm there is an open PR for the current branch
-   (`gh pr view --json number,state,url`).
+   (`gh pr view --json number,state,url`). If `gh pr view` exits
+   non-zero because there is no PR on the current branch, abort with:
+
+   ```
+   aborted: no pull request for current branch <name>. Run /kimi-git-flow:pr first.
+   ```
+
+   Do not silently swallow the `gh` failure — the user needs the
+   exact recovery command.
 2. Run `timeout "${KIMI_GIT_FLOW_WATCH_TIMEOUT_MIN:-30}m" gh pr checks --watch --interval 30`.
 3. On exit 0 → all checks green. Print "checks green for PR #<n>" and
    stop. The user runs `/kimi-git-flow:merge` next.

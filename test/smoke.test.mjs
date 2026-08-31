@@ -11,6 +11,26 @@
 //   4. Slug rule — the documented slug transformation must hold for
 //      the canonical examples in branch-naming.md. This is the
 //      contract every other command depends on.
+//   5. State enum — `lastAction` values in SKILL.md, state.md, and
+//      status.md must stay in sync with the set guarded here. Drift
+//      silently breaks `/status` rendering.
+//   6. CI matrix — the dogfooded `.github/workflows/ci.yml` must pin
+//      `actions/checkout` and `actions/setup-node` to a full
+//      `@vX.Y.Z` tag, not the mutable `@vX`. A silent upgrade would
+//      change test behavior under our feet.
+//   7. `--pr` hint — `commands/watch.md` and `commands/merge.md` must
+//      surface the exact `/kimi-git-flow:pr` next-step command when
+//      the user invokes them with no PR open. Otherwise the user
+//      gets a `gh pr view` failure with no recovery path.
+//   8. State cross-link — every command that reads workflow state
+//      must cite `references/state.md` so a schema change doesn't
+//      break the command silently.
+//   9. Orphans — every reference file must have at least one inbound
+//      link from SKILL.md or a command. A reference nobody cites is
+//      dead documentation.
+//  10. Dry-run — `/branch`, `/pr`, and `/merge` must each document a
+//      `--dry-run` flag in their Usage section so the audit path is
+//      always available.
 //
 // Run with `npm test`. Node 20+.
 
@@ -35,10 +55,10 @@ function exists(rel) {
 
 /** Pull YAML frontmatter (between leading `---` fences) into a plain object. */
 function parseFrontmatter(md) {
-  const m = md.match(/^---\n([\s\S]*?)\n---\n/);
+  const m = md.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
   if (!m) return {};
   const out = {};
-  for (const line of m[1].split("\n")) {
+  for (const line of m[1].split(/\r?\n/)) {
     const ix = line.indexOf(":");
     if (ix === -1) continue;
     const key = line.slice(0, ix).trim();
@@ -63,6 +83,35 @@ function withKimiPrefix(s) {
   return s.startsWith("kimi/") ? s : `kimi/${s}`;
 }
 
+/** True iff a markdown file mentions another reference file by path. */
+function references(md, target) {
+  const re = new RegExp(`references/${target.replace(/[/.]/g, "\\$&")}\\b`);
+  return re.test(md);
+}
+
+const REFERENCE_FILES = [
+  "skills/git-flow/references/branch-naming.md",
+  "skills/git-flow/references/safety.md",
+  "skills/git-flow/references/local-check.md",
+  "skills/git-flow/references/setup-ci.md",
+  "skills/git-flow/references/ci-watch.md",
+  "skills/git-flow/references/merge-strategy.md",
+  "skills/git-flow/references/pr-template.md",
+  "skills/git-flow/references/state.md",
+];
+
+const COMMAND_FILES = [
+  "commands/branch.md",
+  "commands/pr.md",
+  "commands/watch.md",
+  "commands/merge.md",
+  "commands/status.md",
+  "commands/back-to-main.md",
+  "commands/setup-ci.md",
+];
+
+const ROOT_FILES = ["skills/git-flow/SKILL.md", ...COMMAND_FILES];
+
 // --- Tests ----------------------------------------------------------------
 
 test("kimi.plugin.json is well-formed and exposes the host-runtime keys", () => {
@@ -83,24 +132,31 @@ test("kimi.plugin.json is well-formed and exposes the host-runtime keys", () => 
   );
 });
 
-test("package.json declares the test script and module type", () => {
+test("skillInstructions references the non-negotiable safety rules", () => {
+  const cfg = JSON.parse(read("kimi.plugin.json"));
+  const s = cfg.skillInstructions;
+  assert.ok(typeof s === "string" && s.length > 0, "skillInstructions must be a non-empty string");
+  const rules = [
+    { name: "no force-push default", re: /force-push/i },
+    { name: "no --admin", re: /--admin/i },
+    { name: "no merge with red CI", re: /red\s*CI|failing\s*CI|checks?\s*pass/i },
+    { name: "no co-mingled changes", re: /co[- ]?mingle|unrelated\s*changes?/i },
+  ];
+  for (const r of rules) {
+    assert.ok(r.re.test(s), `skillInstructions must mention: ${r.name}`);
+  }
+});
+
+test("package.json declares the test script, lint:links, and module type", () => {
   const pkg = JSON.parse(read("package.json"));
   assert.equal(pkg.type, "module");
   assert.ok(pkg.scripts && pkg.scripts.test, "test script must exist");
+  assert.ok(pkg.scripts["lint:links"], "lint:links script must exist");
   assert.ok(pkg.engines && pkg.engines.node);
 });
 
 test("every command markdown has name + description frontmatter", () => {
-  const expected = [
-    "commands/branch.md",
-    "commands/pr.md",
-    "commands/watch.md",
-    "commands/merge.md",
-    "commands/status.md",
-    "commands/back-to-main.md",
-    "commands/setup-ci.md",
-  ];
-  for (const rel of expected) {
+  for (const rel of COMMAND_FILES) {
     assert.ok(exists(rel), `${rel} must exist`);
     const fm = parseFrontmatter(read(rel));
     assert.ok(fm.name, `${rel} missing frontmatter name`);
@@ -123,21 +179,8 @@ test("SKILL.md has name + description frontmatter", () => {
 });
 
 test("every reference cross-link resolves to a file", () => {
-  const roots = [
-    "skills/git-flow/SKILL.md",
-    "commands/branch.md",
-    "commands/pr.md",
-    "commands/watch.md",
-    "commands/merge.md",
-    "commands/status.md",
-    "commands/back-to-main.md",
-    "commands/setup-ci.md",
-  ];
-  // Match either `(references/foo.md)` or `references/foo.md` (bare).
-  // SKILL.md uses relative paths; commands use `references/...` from the
-  // plugin root. Resolve both forms against the file that mentions them.
   const linkRe = /[`(](references\/[\w-]+\.md)[`)]/g;
-  for (const rel of roots) {
+  for (const rel of ROOT_FILES) {
     const md = read(rel);
     const fromDir = dirname(resolve(root, rel));
     for (const m of md.matchAll(linkRe)) {
@@ -148,12 +191,26 @@ test("every reference cross-link resolves to a file", () => {
   }
 });
 
+test("every reference file declared under skills/git-flow/references/ exists", () => {
+  for (const rel of REFERENCE_FILES) {
+    assert.ok(exists(rel), `${rel} must exist`);
+  }
+});
+
+test("no reference file is orphaned — every reference must have an inbound link", () => {
+  const inbound = new Map(REFERENCE_FILES.map((r) => [r, false]));
+  for (const rel of ROOT_FILES) {
+    const md = read(rel);
+    for (const r of REFERENCE_FILES) {
+      if (references(md, r.split("/").pop())) inbound.set(r, true);
+    }
+  }
+  for (const [r, hit] of inbound) {
+    assert.ok(hit, `${r} is orphaned — no SKILL.md or command cites it. Add a link or delete the file.`);
+  }
+});
+
 test("branch slug satisfies the documented invariants", () => {
-  // The mechanical rules (1-5 in branch-naming.md):
-  //   lowercase ASCII, kebab-case, no leading kimi/, ≤48 chars, no trailing dash.
-  // Noun-phrase selection ("first one or two noun phrases") is an LLM
-  // heuristic and intentionally not testable here — that's what the
-  // agent is for.
   const cases = [
     "rename foo to bar",
     "fix the login redirect bug",
@@ -169,49 +226,18 @@ test("branch slug satisfies the documented invariants", () => {
     assert.ok(s.length <= 48, `slug must be ≤48 chars: ${s}`);
     assert.ok(!s.startsWith("kimi"), `slug must not carry the kimi/ prefix from input: ${s}`);
   }
-  // Length cap works on extreme input.
   const long = "a".repeat(200);
   assert.ok(slug(long).length <= 48);
-  // Trailing dashes are trimmed.
   assert.ok(!slug("foo bar ").endsWith("-"));
-  // Prefix stripping handles both `kimi/` and `kimi:`.
   assert.equal(slug("kimi/foo-bar"), "foo-bar");
   assert.equal(slug("kimi: foo bar"), "foo-bar");
-  // Runs of non-alphanumeric characters collapse into a single dash.
-  // branch-naming.md rule 2: "Spaces become `-`. Strip all characters
-  // outside [a-z0-9-]. Collapse runs of `-`."
   assert.equal(slug("foo   bar"), "foo-bar");
   assert.equal(slug("foo!!!bar"), "foo-bar");
   assert.equal(slug("foo___bar"), "foo-bar");
 });
 
-test("every reference file declared under skills/git-flow/references/ exists", () => {
-  const refs = [
-    "skills/git-flow/references/branch-naming.md",
-    "skills/git-flow/references/safety.md",
-    "skills/git-flow/references/local-check.md",
-    "skills/git-flow/references/setup-ci.md",
-    "skills/git-flow/references/ci-watch.md",
-    "skills/git-flow/references/merge-strategy.md",
-    "skills/git-flow/references/pr-template.md",
-  ];
-  for (const rel of refs) {
-    assert.ok(exists(rel), `${rel} must exist`);
-  }
-});
-
 test("command markdown has coherent numbered steps (no orphaned prose)", () => {
-  // Catches the bug class where a sed-style edit drops the opener of
-  // a numbered step, leaving the continuation as orphan prose.
-  const files = [
-    "commands/branch.md",
-    "commands/pr.md",
-    "commands/watch.md",
-    "commands/merge.md",
-    "commands/back-to-main.md",
-    "commands/setup-ci.md",
-  ];
-  for (const rel of files) {
+  for (const rel of COMMAND_FILES) {
     const md = read(rel);
     const section = md.split(/^## What this does$/m)[1]?.split(/^## /m)[0] ?? "";
     const lines = section.split("\n");
@@ -232,26 +258,9 @@ test("command markdown has coherent numbered steps (no orphaned prose)", () => {
   }
 });
 
-test("command markdown has no orphan prose blocks (lines that look like list continuations without their opener)", () => {
-  // Catches the bug class where an edit replaces a numbered list item
-  // with a bare continuation line. Heuristic: any line under a
-  // `## ...` section that is a plain prose sentence and immediately
-  // follows a numbered step whose opener is the same paragraph must
-  // keep a blank line before the next numbered step. This is a coarse
-  // check — full markdown lint would be heavier than the project
-  // warrants.
-  const files = [
-    "commands/branch.md",
-    "commands/pr.md",
-    "commands/watch.md",
-    "commands/merge.md",
-    "commands/back-to-main.md",
-    "commands/setup-ci.md",
-  ];
-  for (const rel of files) {
+test("command markdown has no orphan prose blocks", () => {
+  for (const rel of COMMAND_FILES) {
     const md = read(rel);
-    // Every H2 section must end with a blank line before EOF (or
-    // before the next H2).
     const sections = md.split(/^## /m).slice(1);
     for (const s of sections) {
       const lines = s.split("\n");
@@ -264,3 +273,91 @@ test("command markdown has no orphan prose blocks (lines that look like list con
   }
 });
 
+test("lastAction enum in state.md, SKILL.md, status.md stays in sync", () => {
+  const tableCellRe = /^\|[^|]*`?(branched|committed|pr-opened|watched-green|merged|abandoned)`?(?=[^|]*\|)/gm;
+  const allowed = new Set([
+    "branched",
+    "committed",
+    "pr-opened",
+    "watched-green",
+    "merged",
+    "abandoned",
+  ]);
+  const files = [
+    "skills/git-flow/SKILL.md",
+    "skills/git-flow/references/state.md",
+    "commands/status.md",
+  ];
+  for (const rel of files) {
+    const md = read(rel);
+    const seen = new Set();
+    for (const m of md.matchAll(tableCellRe)) {
+      seen.add(m[1]);
+    }
+    for (const v of seen) {
+      assert.ok(allowed.has(v), `${rel} lists unknown lastAction value: ${v}`);
+    }
+  }
+});
+
+test("state.md does not reintroduce 'pushed' as a separate lastAction value", () => {
+  const md = read("skills/git-flow/references/state.md");
+  const tableRow = md.split("\n").find((line) => /^\|\s*`?pushed`?\s*\|/.test(line));
+  assert.ok(!tableRow, "state.md must not list 'pushed' as a lastAction value in any table row");
+});
+
+test("dogfooded CI workflow pins actions/checkout and actions/setup-node to a specific minor version", () => {
+  const yml = read(".github/workflows/ci.yml");
+  assert.match(
+    yml,
+    /uses:\s*actions\/checkout@v\d+\.\d+\.\d+/,
+    "actions/checkout must be pinned to a full @vX.Y.Z tag",
+  );
+  assert.match(
+    yml,
+    /uses:\s*actions\/setup-node@v\d+\.\d+\.\d+/,
+    "actions/setup-node must be pinned to a full @vX.Y.Z tag",
+  );
+  assert.match(
+    yml,
+    /\b(npm ci|npm install --ci)\b/,
+    "CI must install from the lockfile (npm ci or npm install --ci)",
+  );
+});
+
+test("watch.md and merge.md surface /kimi-git-flow:pr when no PR is open", () => {
+  const watch = read("commands/watch.md");
+  const merge = read("commands/merge.md");
+  assert.ok(
+    /\/kimi-git-flow:pr/.test(watch),
+    "commands/watch.md must mention /kimi-git-flow:pr as the recovery path when no PR is open",
+  );
+  assert.ok(
+    /\/kimi-git-flow:pr/.test(merge),
+    "commands/merge.md must mention /kimi-git-flow:pr as the recovery path when no PR is open",
+  );
+});
+
+test("branch, pr, and merge commands document a --dry-run flag", () => {
+  for (const rel of ["commands/branch.md", "commands/pr.md", "commands/merge.md"]) {
+    const md = read(rel);
+    assert.ok(
+      /--dry-run/.test(md),
+      `${rel} must document the --dry-run flag in its Usage section`,
+    );
+  }
+});
+
+test("state.md is cross-linked from every command that reads workflow state", () => {
+  const consumers = [
+    "commands/status.md",
+    "commands/merge.md",
+  ];
+  for (const rel of consumers) {
+    const md = read(rel);
+    assert.ok(
+      references(md, "state.md"),
+      `${rel} reads workflow state but does not cross-link references/state.md`,
+    );
+  }
+});

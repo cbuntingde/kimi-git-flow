@@ -28,6 +28,16 @@ rule has a clear, user-visible abort message.
    has unmerged commits is fine (the merge is what deletes it), but
    `git push origin --delete <branch>` against a branch with unmerged
    commits is forbidden unless the user explicitly approves.
+   The `/kimi-git-flow:back-to-main --delete-remote` flag is the
+   one place this approval is granted. **Typing `--delete-remote` is
+   the explicit approval.** The workflow refuses to add
+   `--delete-remote` on its own initiative, refuses to delete a
+   remote branch that has more than one commit ahead of the default
+   branch unless the flag is present, and prints a one-line warning
+   when the branch is shared (more than one commit ahead) so the
+   user can rescind before the push fires. See
+   `commands/back-to-main.md` and rule 4 in the soft-rules section
+   below for the warning contract.
 9. **No skipping the watch step.** Even if the user says "CI is fine,
    just merge", the workflow still runs `gh pr checks --watch` once
    before merging. The user can pass `--no-verify` style intent by

@@ -1,0 +1,27 @@
+name: ci
+
+# This workflow is dogfooded by kimi-git-flow itself. It mirrors the
+# Node template the plugin's `setup-ci` command produces, pinned to
+# specific minor versions so a silent upgrade of `actions/*` cannot
+# change test behavior under our feet. To bump, edit the two pinned
+# versions in lockstep with the smoke-test guard and a CHANGELOG note.
+#
+# If you want full supply-chain hardening, pin by 40-char commit SHA
+# instead of `v4.2.2`. That is the GitHub-recommended practice; we
+# trade a bit of that for readability of this small workflow.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-node@v4.1.0
+        with:
+          node-version: ${{ vars.NODE_VERSION || '20' }}
+      - run: npm ci || npm install
+      - run: npm test

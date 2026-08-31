@@ -12,7 +12,7 @@ green (or the user has explicitly waived CI).
 ## Usage
 
 ```text
-/kimi-git-flow:merge
+/kimi-git-flow:merge [--dry-run]
 ```
 
 Optional env vars:
@@ -22,10 +22,26 @@ Optional env vars:
   `gh pr merge`; default `0` keeps the remote branch.
 - `KIMI_GIT_FLOW_BASE_BRANCH` — override the detected default branch.
 
+`--dry-run` runs the preflight, the local-check read, and the
+`gh pr checks` re-verify, then prints the exact `gh pr merge` and
+follow-up `git` invocations the command would run — without
+invoking them. Use this when you want to confirm the strategy,
+the `--delete-branch` choice, and the post-merge branch cleanup
+before actually merging.
+
 ## What this does
 
 1. Confirm there is an open PR for the current branch and it is
-   mergeable (`gh pr view --json mergeable,state`).
+   mergeable (`gh pr view --json mergeable,state`). If `gh pr view`
+   exits non-zero because there is no PR on the current branch, abort
+   with:
+
+   ```
+   aborted: no pull request for current branch <name>. Run /kimi-git-flow:pr first.
+   ```
+
+   Do not silently swallow the `gh` failure — the user needs the
+   exact recovery command.
 2. Read the local-check result for the current branch from
    `.git/kimi-git-flow/local-check.json`. Verify the recorded `branch`
    field equals the current branch (the file is per-branch but lives
@@ -36,7 +52,8 @@ Optional env vars:
    `result` is `fail`, refuse: the user must push a follow-up commit
    that fixes the failing check (the workflow re-runs the local check
    on the next run) before retrying. See
-   `skills/git-flow/references/local-check.md`.
+   `skills/git-flow/references/local-check.md` and the schema in
+   `skills/git-flow/references/state.md`.
 3. Run `gh pr checks` one more time. If any required check is failing
    or pending, abort with the failing check name. The user must wait
    for green or fix the check.
@@ -80,3 +97,5 @@ See `skills/git-flow/references/safety.md` for the full rule set.
 - `/kimi-git-flow:watch` — confirm CI is green before merging.
 - `skills/git-flow/references/merge-strategy.md` — squash vs. rebase
   vs. merge.
+- `skills/git-flow/references/state.md` — schema for the
+  `.git/kimi-git-flow/state.json` file this command writes.

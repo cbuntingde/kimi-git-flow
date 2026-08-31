@@ -9,6 +9,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node --test test/smoke.test.mjs"
+    "test": "node --test test/smoke.test.mjs",
+    "lint:links": "node --test test/smoke.test.mjs --test-name-pattern=reference"
   }
 }
