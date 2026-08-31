@@ -6,6 +6,21 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `references/safety.md` rule 11 (no silent revert): the workflow must
+  not invoke `git checkout -- <path>`, `git reset --hard`,
+  `git stash drop` / `git stash clear`, or `git clean -fd` during
+  steps 1–5 without explicit user approval. The single sanctioned
+  use of `git reset --hard` is in step 6 when every local commit on
+  the current branch is already reachable from
+  `origin/<default-branch>` — see soft-rule 4 for the exact gate.
+- `references/safety.md` rule 12 (no branching off a divergent
+  default branch): step 0 preflight now refuses to proceed if the
+  local default branch is ahead of `origin/<default-branch>` by any
+  number of unpushed commits. The user is shown the exact
+  reconciliation commands and the workflow stops.
+
 ### Changed
 
 - `lastAction` enum no longer includes `pushed`. Push and PR opening are

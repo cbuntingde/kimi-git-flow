@@ -36,14 +36,49 @@ rule has a clear, user-visible abort message.
    branch unless the flag is present, and prints a one-line warning
    when the branch is shared (more than one commit ahead) so the
    user can rescind before the push fires. See
-   `commands/back-to-main.md` and rule 4 in the soft-rules section
-   below for the warning contract.
+   `commands/back-to-main.md` for the exact flag contract.
 9. **No skipping the watch step.** Even if the user says "CI is fine,
    just merge", the workflow still runs `gh pr checks --watch` once
    before merging. The user can pass `--no-verify` style intent by
    saying so explicitly, but the workflow always confirms green.
 10. **No `--no-verify` on commits.** Standard `git commit` only — no
     `--no-verify` to skip hooks, unless the user explicitly approves.
+11. **No silent revert.** The following commands destroy uncommitted or
+    unpushed work without confirmation and are forbidden mid-workflow:
+
+    - `git checkout -- <path>` (reverts tracked files silently).
+    - `git reset --hard` (drops uncommitted work AND any local commits
+      not yet on `origin/<default-branch>`).
+    - `git stash drop` or `git stash clear` (drops the safety net).
+    - `git clean -fd` (deletes untracked files silently).
+
+    The workflow **must not** invoke any of these during steps 1–5
+    without an explicit user message approving the loss. The single
+    sanctioned use of `git reset --hard` is in step 6 (Return to
+    default branch) when **every** local commit on the current branch
+    is already reachable from `origin/<default-branch>` — see rule 4
+    in the soft-rules section for the exact safety gate.
+
+    If the agent finds itself needing to discard local state to make
+    progress (e.g. a `git stash pop` produced conflicts, or a `git
+    pull --ff-only` failed), it must stop and surface the conflict.
+    It does **not** "make the build green by deleting the files that
+    conflict." That is exactly the failure mode this rule prevents.
+12. **No branching off a default branch that has unpushed commits.**
+    Before step 1 (create the branch), compare the local default
+    branch against `origin/<default-branch>`. If local is ahead by
+    one or more commits that are not yet on `origin`, refuse with:
+
+    ```
+    aborted: local <default-branch> is N commit(s) ahead of origin/<default-branch>. Push, rebase, or drop them before starting a new branch.
+    ```
+
+    This is the gate that prevents the agent from "rescuing" the
+    user's unmerged work by stashing it (where it can be lost in a
+    later 3-way merge conflict), resetting it (where it is lost for
+    good), or branching off it (where the branch base no longer
+    matches what the user expects on `origin`).
+
 
 ## Soft rules (warn but proceed)
 
@@ -54,7 +89,24 @@ rule has a clear, user-visible abort message.
 3. **Merge commit subject is longer than 72 chars.** Warn and proceed.
 4. **`git pull --ff-only` fails after merge.** Probably means a remote
    commit landed during the CI wait. Surface the divergence and stop —
-   the user decides whether to rebase, merge, or reset.
+   the user decides whether to rebase, merge, or reset. The exact
+   recovery contract is in `SKILL.md` step 6.
+
+   The `git reset --hard` path is sanctioned **only when every local
+   commit on the current branch is already reachable from
+   `origin/<default-branch>`** (i.e. the local commits exist on
+   `origin` already — the reset is purely a local cleanup). Verify
+   with:
+
+   ```bash
+   git log --oneline origin/<default-branch>..HEAD
+   git log --oneline HEAD..origin/<default-branch>
+   ```
+
+   Both outputs empty → safe to `git reset --hard origin/<default-branch>`.
+   Either output non-empty → stop and ask the user. The user decides
+   whether the missing commits are recoverable (rebase/merge) or
+   discardable.
 
 ## Abort message format
 
@@ -70,6 +122,8 @@ Examples:
 - `aborted: gh not authenticated for github.com. Run \`gh auth login --hostname github.com\` and retry.`
 - `aborted: failing CI check. "build (ubuntu-latest)" failed in run https://github.com/.../actions/runs/123. Fix the check or push a follow-up commit.`
 - `aborted: branch protection requires 1 approving review. Ask a reviewer to approve PR #42 before merging.`
+- `aborted: local main is 1 commit(s) ahead of origin/main. Push (\`git push origin main\`), rebase, or drop before starting a new branch.`
+- `aborted: silent revert blocked. \`git reset --hard\` would discard 1 unpushed commit(s). Push, rebase, or drop them before resetting.`
 
 Never bury the abort reason in a paragraph. One line, scannable.
 

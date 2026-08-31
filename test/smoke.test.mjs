@@ -141,6 +141,8 @@ test("skillInstructions references the non-negotiable safety rules", () => {
     { name: "no --admin", re: /--admin/i },
     { name: "no merge with red CI", re: /red\s*CI|failing\s*CI|checks?\s*pass/i },
     { name: "no co-mingled changes", re: /co[- ]?mingle|unrelated\s*changes?/i },
+    { name: "no silent revert", re: /silent revert|checkout\s*--|reset\s*--hard|stash drop/i },
+    { name: "no branching off unpushed default", re: /unpushed\s*commits?/i },
   ];
   for (const r of rules) {
     assert.ok(r.re.test(s), `skillInstructions must mention: ${r.name}`);
@@ -360,4 +362,88 @@ test("state.md is cross-linked from every command that reads workflow state", ()
       `${rel} reads workflow state but does not cross-link references/state.md`,
     );
   }
+});
+
+test("safety.md documents rule 11 (no silent revert) and rule 12 (no unpushed local commits on default branch)", () => {
+  const md = read("skills/git-flow/references/safety.md");
+  assert.ok(
+    /11\.\s*\*\*No silent revert\.\*\*/.test(md),
+    "safety.md must document rule 11: No silent revert (forbids `git checkout --`, `git reset --hard`, `git stash drop`, `git clean -fd` without explicit user approval)",
+  );
+  assert.ok(
+    /12\.\s*\*\*No branching off a default branch that has unpushed commits/.test(md),
+    "safety.md must document rule 12: No branching off a default branch with unpushed commits",
+  );
+  // Both rules must mention the exact verbs they forbid so the procedure
+  // can grep-guard against reintroduction.
+  for (const verb of [
+    "`git checkout -- <path>`",
+    "`git reset --hard`",
+    "`git stash drop`",
+    "`git clean -fd`",
+  ]) {
+    assert.ok(
+      md.includes(verb),
+      `safety.md rule 11 must explicitly name the forbidden command: ${verb}`,
+    );
+  }
+  assert.ok(
+    /origin\/\${\s*DEFAULT_BRANCH\s*}|origin\/<default-branch>|origin\/<default>/.test(md),
+    "safety.md must reference the local-vs-origin divergence check for the default branch",
+  );
+});
+
+test("SKILL.md preflight refuses to proceed when local default branch has unpushed commits", () => {
+  const md = read("skills/git-flow/SKILL.md");
+  const preflight = md.split("### 1. Create the branch")[0];
+  assert.ok(
+    /origin\/\$\{?DEFAULT_BRANCH\}?\.\.\$\{?DEFAULT_BRANCH\}?/.test(preflight) ||
+      /origin\/<default-branch>\.\.<default-branch>/.test(preflight),
+    "SKILL.md preflight must include a git log check that compares local and origin default branches",
+  );
+  assert.ok(
+    /unpushed/.test(preflight) || /ahead of/.test(preflight),
+    "SKILL.md preflight must call out unpushed/ahead commits as a stop condition",
+  );
+  assert.ok(
+    /rule 12/.test(preflight),
+    "SKILL.md preflight must cross-reference safety.md rule 12",
+  );
+});
+
+test("SKILL.md step 6 documents all three divergence-recovery options (rebase / merge / reset) with the reset safety gate", () => {
+ const md = read("skills/git-flow/SKILL.md");
+ const step6 = md.split("### 7. Loop")[0];
+  for (const opt of ["--rebase", "--no-rebase", "reset --hard"]) {
+    assert.ok(
+      step6.includes(opt),
+      `SKILL.md step 6 must mention the '${opt}' divergence-recovery path`,
+    );
+  }
+  // The reset path must cross-reference rules 11 and 12 so the
+ // safety contract is enforced.
+  assert.ok(
+    /rule 11/.test(step6) && /rule 12/.test(step6),
+    "SKILL.md step 6's reset option must cross-reference safety.md rules 11 and 12",
+  );
+  // The reset safety gate (verify local-only commits are empty
+  // before discarding) must be spelled out.
+  assert.ok(
+    /origin\/<default-branch>\.\.HEAD/.test(step6) && /HEAD\.\.origin\/<default-branch>/.test(step6),
+    "SKILL.md step 6 must show the two git-log checks that gate the reset path",
+  );
+});
+
+test("soft-rule 4 in safety.md gates `git reset --hard` on every local commit being reachable from origin", () => {
+  const md = read("skills/git-flow/references/safety.md");
+  const softRules = md.split("## Abort message format")[0];
+  assert.ok(
+    /`git pull --ff-only` fails after merge/.test(softRules),
+    "soft-rule 4 must still cover the `git pull --ff-only` failure case",
+  );
+  assert.ok(
+    /sanctioned.*only when.*every.*local.*commit.*reachable.*origin/i.test(softRules) ||
+      /safe to `git reset --hard origin/.test(softRules),
+    "soft-rule 4 must gate `git reset --hard` on the local-vs-origin commit check",
+  );
 });

@@ -56,11 +56,23 @@ test -z "$(git status --porcelain)"
 
 # Detect the default branch (do NOT assume "main").
 gh repo view --json defaultBranchRef -q .defaultBranchRef.name
+DEFAULT_BRANCH=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)
+
+# Confirm local default branch is in sync with origin. Refuse to
+# proceed if there are unpushed local commits — see rule 12 in
+# `references/safety.md`. This gate prevents the agent from
+# stashing or resetting the user's unmerged work to "make the
+# build green."
+test -z "$(git log --oneline origin/${DEFAULT_BRANCH}..${DEFAULT_BRANCH})"
 ```
 
-If any of these fail, abort with a clear message. For a dirty working
-tree, offer `git stash` or "commit your existing changes first" and wait
-for the user.
+If any of these fail, abort with a clear message. For a dirty
+working tree, offer `git stash` or "commit your existing changes
+first" and wait for the user. For unpushed local commits on the
+default branch, surface the exact reconciliation commands
+(`git push origin <default>`, `git rebase origin/<default>`, or
+`git reset --hard origin/<default>`) and wait — the agent does
+not pick one on the user's behalf.
 
 ### 1. Create the branch
 
@@ -203,6 +215,39 @@ git branch -d kimi/<slug> 2>/dev/null || true
 If the user's local branch and remote branch are out of sync after the
 merge (e.g. another merge landed during the CI wait), `git pull --ff-only`
 will catch it. If `--ff-only` fails, surface the divergence and stop.
+
+#### Recovering from a divergent default branch
+
+`git pull --ff-only` failing means local `<default-branch>` and
+`origin/<default-branch>` have diverged. Three options, in order of
+preference:
+
+1. **`git pull --rebase`** — replay local commits on top of the new
+   `origin` tip. Use when the local commits are unreleased work the
+   user wants to keep. If conflicts arise, stop and surface them;
+   do **not** "resolve by taking ours."
+2. **`git pull --no-rebase`** — create a merge commit joining the
+   two lines. Use when the local commits have already been shared
+   or you want a paper trail. Acceptable but produces a noisier
+   history than option 1.
+3. **`git reset --hard origin/<default-branch>`** — discard local
+   commits. **Sanctioned only when every local commit is already
+   reachable from `origin/<default-branch>`** (i.e. the merge
+   already landed and the local copy is just stale). Verify with:
+
+   ```bash
+   git log --oneline origin/<default-branch>..HEAD   # local-only
+   git log --oneline HEAD..origin/<default-branch>   # remote-only
+   ```
+
+   If `local-only` is non-empty AND those commits are not on
+   `origin`, **stop and ask the user.** This is rule 11 (no
+   silent revert) and rule 12 (no dropping unpushed work) in
+   `references/safety.md`. The agent does not pick option 3 on
+   the user's behalf.
+
+The workflow prints the exact diagnostic and the chosen option's
+command, then stops. The user runs the command.
 
 ### 7. Loop
 
