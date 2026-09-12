@@ -71,6 +71,22 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - `commands/watch.md` and `commands/merge.md` must mention
     `/kimi-git-flow:pr` as the recovery path.
 
+### Fixed
+
+- **Invalid YAML frontmatter silently disabled the plugin.** `skills/git-flow/SKILL.md`
+  and `commands/setup-ci.md` had an unquoted `description` value containing a
+  colon followed by a space (`... workflow: fresh ...`, `... opt-in: scaffold ...`).
+  YAML reads that as a nested mapping, so the host logged `Skipping invalid skill`
+  and dropped the skill. Because the plugin's only auto-run mechanism is
+  `sessionStart.skill`, the plugin stopped running on session start entirely.
+  Both descriptions are now quoted.
+- **Frontmatter lint.** The smoke suite now validates every `SKILL.md` and
+  `commands/*.md` frontmatter with a strict parser that rejects
+  host-rejectable constructs (unquoted `: `, a trailing `:`, or an unquoted
+  ` #`), pinned with a regression test for the exact construct that caused the
+  outage. The previous lenient `parseFrontmatter` could not distinguish valid
+  YAML from frontmatter the host would reject.
+
 ## [0.2.0] — 2026-08-29
 
 ### Added

@@ -86,6 +86,59 @@ function parseFrontmatter(md) {
   return out;
 }
 
+/**
+ * Strict frontmatter validator.
+ *
+ * `parseFrontmatter` above is deliberately lenient — it slices each line on
+ * the first `:`, so it cannot tell valid YAML from a manifest the host will
+ * reject and silently skip. That is exactly how the `git-flow` skill was
+ * disabled: an unquoted `description` value contained a colon followed by a
+ * space (`... workflow: fresh ...`), which YAML reads as a nested mapping,
+ * and the host logged `Skipping invalid skill` and dropped it.
+ *
+ * This validator returns the parsed object and throws with a precise message
+ * on the constructs that make frontmatter invalid YAML. It is intentionally
+ * a small, dependency-free guard for the frontmatter subset this repo uses.
+ */
+function parseFrontmatterStrict(md) {
+  const m = md.match(/^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/);
+  if (!m) throw new Error("missing YAML frontmatter (`---` fenced block)");
+
+  const out = {};
+  m[1].split(/\r?\n/).forEach((line, i) => {
+    const n = i + 1;
+    if (line.trim() === "" || line.trimStart().startsWith("#")) return;
+
+    // A mapping entry: `key:` or `key: value`. The key may itself contain a
+    // colon when it is not followed by a space (e.g. `kimi:origin`), so the
+    // key group is non-greedy and stops at the first `: ` or trailing `:`.
+    const entry = line.match(/^\s*(.*?):(?:[ \t]+(.*))?$/);
+    if (!entry) {
+      throw new Error(`line ${n}: not a "key: value" mapping entry: ${JSON.stringify(line)}`);
+    }
+
+    const key = entry[1].trim();
+    const val = entry[2] ?? "";
+    const quoted = /^(".*"|'.*')$/.test(val);
+    if (!quoted) {
+      if (val.endsWith(":")) {
+        throw new Error(`line ${n}: unquoted value ends with ":" — wrap the value in quotes: ${JSON.stringify(line)}`);
+      }
+      if (val.includes(": ")) {
+        throw new Error(`line ${n}: unquoted value contains ": " — wrap the value in quotes: ${JSON.stringify(line)}`);
+      }
+      if (val.includes(" #")) {
+        throw new Error(`line ${n}: unquoted value contains " #" — wrap the value in quotes: ${JSON.stringify(line)}`);
+      }
+    }
+    out[key] = quoted ? val.slice(1, -1) : val;
+  });
+
+  if (!out.name) throw new Error("frontmatter is missing the required key `name`");
+  if (!out.description) throw new Error("frontmatter is missing the required key `description`");
+  return out;
+}
+
 /** Replicate the slug rule from skills/git-flow/references/branch-naming.md. */
 function slug(input) {
   return input
@@ -195,6 +248,41 @@ test("SKILL.md has name + description frontmatter", () => {
   assert.ok(
     fm.description.length < 250,
     `SKILL.md description is ${fm.description.length} chars; keep under 250`,
+  );
+});
+
+test("frontmatter parses as valid YAML (host-rejectable constructs are rejected)", () => {
+  // The lenient parseFrontmatter is not enough: it slices on the first `:`
+  // and so accepts frontmatter the host rejects and silently skips. Every
+  // manifest the host reads must parse under the strict validator.
+  for (const rel of ROOT_FILES) {
+    assert.doesNotThrow(
+      () => parseFrontmatterStrict(read(rel)),
+      `${rel} has invalid YAML frontmatter`,
+    );
+  }
+
+  // Regression guard: the exact construct that disabled the git-flow skill —
+  // an unquoted scalar containing a colon followed by a space.
+  assert.throws(
+    () => parseFrontmatterStrict("---\nname: git-flow\ndescription: a workflow: b\n---\n"),
+    /unquoted value contains ": "/,
+    "an unquoted ': ' in a scalar must be rejected",
+  );
+
+  // Quoting the same value is the documented fix and must pass.
+  assert.doesNotThrow(
+    () => parseFrontmatterStrict('---\nname: git-flow\ndescription: "a workflow: b"\n---\n'),
+    "a quoted scalar containing ': ' must be accepted",
+  );
+
+  // A nested key containing a colon without a following space is valid YAML.
+  assert.doesNotThrow(
+    () =>
+      parseFrontmatterStrict(
+        "---\nname: x\ndescription: y\nmetadata:\n  kimi:origin: kimi-git-flow\n---\n",
+      ),
+    "a `kimi:origin` nested key must be accepted",
   );
 });
 

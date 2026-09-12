@@ -1,6 +1,6 @@
 ---
 name: setup-ci
-description: One-shot opt-in: scaffold a minimal `.github/workflows/ci.yml` for the detected stack and open a PR. Never auto-runs.
+description: "One-shot opt-in: scaffold a minimal `.github/workflows/ci.yml` for the detected stack and open a PR. Never auto-runs."
 ---
 
 # /kimi-git-flow:setup-ci
