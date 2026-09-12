@@ -1,6 +1,6 @@
 ---
 name: git-flow
-description: Branch-per-change GitHub workflow: fresh branch → commit → local check → push → PR → wait for CI → merge → return to default. Drives `gh` and `git` via Bash.
+description: "Branch-per-change GitHub workflow: fresh branch → commit → local check → push → PR → wait for CI → merge → return to default. Drives `gh` and `git` via Bash."
 license: Apache-2.0
 compatibility: Requires git and gh (GitHub CLI) on PATH, with `gh auth status` succeeding for the target repo's host. Targets Kimi Code CLI >= 1.0.
 metadata:
