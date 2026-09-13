@@ -37,10 +37,10 @@ No arguments. No env vars.
      untouched, exit.
    - silence → wait. Do not write the file until the user types
      something.
-6. On approval: `git checkout -b kimi/setup-ci origin/<default>`,
+6. On approval: `git checkout -b <branch> origin/<default>`,
    `git add -A`, commit with subject
    `ci: add GitHub Actions workflow for <stack>`,
-   `git push -u origin kimi/setup-ci`,
+   `git push -u origin <branch>`,
    `gh pr create --fill`. Print the PR URL and stop.
 
 The user runs `/kimi-git-flow:watch` and `/kimi-git-flow:merge` to

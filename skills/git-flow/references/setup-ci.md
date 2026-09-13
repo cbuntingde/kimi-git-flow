@@ -180,7 +180,7 @@ the user. If the user is silent, the workflow waits.
 On approval:
 
 ```bash
-git checkout -b kimi/setup-ci origin/<default-branch>
+git checkout -b <branch> origin/<default-branch>
 
 # Write the file. Use Write, not `cat >`, to keep edits auditable.
 # .github/workflows/ci.yml
@@ -188,11 +188,11 @@ git checkout -b kimi/setup-ci origin/<default-branch>
 git add -A
 git commit -m "ci: add GitHub Actions workflow for <stack>"
 
-git push -u origin kimi/setup-ci
+git push -u origin <branch>
 
 gh pr create \
   --base <default-branch> \
-  --head kimi/setup-ci \
+  --head <branch> \
   --title "ci: add GitHub Actions workflow for <stack>" \
   --fill
 ```

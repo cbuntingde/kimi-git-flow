@@ -105,7 +105,7 @@ The skill writes the result to
 
 ```json
 {
-  "branch": "kimi/<slug>",
+  "branch": "<branch>",
   "stack": "node",
   "command": "npm test --if-present",
   "result": "pass",

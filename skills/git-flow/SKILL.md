@@ -82,20 +82,25 @@ and stops — the agent does not pick one on the user's behalf.
 
 ### 1. Create the branch
 
-Compute the slug (see `references/branch-naming.md`):
+Determine the project's branch-naming convention (see
+`references/branch-naming.md`) and build the branch name from it:
 
-- Lowercase.
-- Kebab-case (spaces → `-`, strip non-alphanumeric).
-- Strip leading `kimi/` if the user already typed it.
-- Cap at 48 characters.
-- Prefix `kimi/`.
+1. If the repository documents a convention (a contributing guide, a
+   git-workflow doc, ...), follow it exactly.
+2. Otherwise, infer it from the dominant pattern in the repository's
+   recent branch names (`git branch -r`, `gh pr list --json headRefName`).
+3. Otherwise, fall back to `<type>/<slug>` (e.g. `feature/`, `fix/`,
+   `docs/`).
 
-Examples: `kimi/fix-login-redirect`, `kimi/phase-2-rbac`,
-`kimi/refactor-error-types`.
+Normalize the `<slug>` portion (lowercase, kebab-case, ≤ 48 chars, no
+trailing dash). Never impose a tool-specific prefix.
+
+Examples: `feature/my-change`, `fix/login-redirect`,
+`refactor/error-types`.
 
 ```bash
 git fetch origin <default-branch>
-git checkout -b kimi/<slug> origin/<default-branch>
+git checkout -b <branch> origin/<default-branch>
 ```
 
 If the branch already exists locally or remotely, append `-2`, `-3`, ...
@@ -138,11 +143,11 @@ sanity check so obvious failures don't reach the PR.
 ### 3. Push and open the PR
 
 ```bash
-git push -u origin kimi/<slug>
+git push -u origin <branch>
 
 gh pr create \
   --base <default-branch> \
-  --head kimi/<slug> \
+  --head <branch> \
   --title "<human-readable title>" \
   --body-file <path-to-template-from-references-pr-template>
 ```
@@ -198,7 +203,7 @@ fi
 `KIMI_GIT_FLOW_MERGE_STRATEGY=rebase` or `=merge`. See
 `references/merge-strategy.md` for the decision tree.
 
-The remote branch (`kimi/<slug>` on `origin`) is **kept by default** after
+The remote branch (`<branch>` on `origin`) is **kept by default** after
 merge. Set `KIMI_GIT_FLOW_DELETE_REMOTE_BRANCH=1` to pass `--delete-branch`
 to `gh pr merge` and clean up the remote ref. The local copy is always
 tidied in step 6 regardless of this setting.
@@ -215,7 +220,7 @@ git pull --ff-only
 
 # Always tidy the local copy — the remote branch is kept unless
 # KIMI_GIT_FLOW_DELETE_REMOTE_BRANCH=1 was set (handled in step 5).
-git branch -d kimi/<slug> 2>/dev/null || true
+git branch -d <branch> 2>/dev/null || true
 ```
 
 If the user's local branch and remote branch are out of sync after the
@@ -317,8 +322,8 @@ When the workflow completes successfully, print a one-line summary. The
 parenthetical reflects whether the remote branch was kept or deleted:
 
 ```
-merged kimi/<slug> → <default-branch> via PR #<n> (remote branch kept)
-merged kimi/<slug> → <default-branch> via PR #<n> (remote branch deleted)
+merged <branch> → <default-branch> via PR #<n> (remote branch kept)
+merged <branch> → <default-branch> via PR #<n> (remote branch deleted)
 ```
 
 When it stops early, print the **exact** reason and the next step the

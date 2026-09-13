@@ -84,11 +84,11 @@ bubble per PR. This is the right choice when:
 ## Branch retention
 
 - **Remote branch is kept by default.** `gh pr merge` is called without
-  `--delete-branch`, so `kimi/<slug>` survives on `origin` after the PR
+  `--delete-branch`, so `<branch>` survives on `origin` after the PR
   merges. Use it for archaeology, audit, or "I want to point someone at
   the exact branch this work landed on."
 - **Local copy is always tidied.** Regardless of the env var, step 6 runs
-  `git branch -d kimi/<slug>` so the working copy does not accumulate
+  `git branch -d <branch>` so the working copy does not accumulate
   stale branches. Local refs are working-copy hygiene; the remote ref is
   the durable record.
 - **To opt back into remote deletion**, set

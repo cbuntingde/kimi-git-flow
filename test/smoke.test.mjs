@@ -150,10 +150,6 @@ function slug(input) {
     .replace(/-+$/, "");
 }
 
-function withKimiPrefix(s) {
-  return s.startsWith("kimi/") ? s : `kimi/${s}`;
-}
-
 /** True iff a markdown file mentions another reference file by path. */
 function references(md, target) {
   const re = new RegExp(`references/${target.replace(/[/.]/g, "\\$&")}\\b`);
