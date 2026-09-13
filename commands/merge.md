@@ -68,8 +68,8 @@ before actually merging.
 7. `git branch -d <branch>` to tidy the local copy (always runs,
    regardless of `--delete-branch`).
 8. Print one of:
-   - `merged kimi/<slug> → <default-branch> via PR #<n> (remote branch kept)`
-   - `merged kimi/<slug> → <default-branch> via PR #<n> (remote branch deleted)`
+   - `merged <branch> → <default-branch> via PR #<n> (remote branch kept)`
+   - `merged <branch> → <default-branch> via PR #<n> (remote branch deleted)`
    and stop.
 
 ## When not to use

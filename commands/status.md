@@ -49,7 +49,8 @@ The output is plain text, suitable for pasting back to the user.
 - The user wants the workflow to do something. This command is
   read-only.
 - The user wants the history of all branches the workflow has touched.
-  That requires `git log --all --grep="kimi/"` or a separate audit tool.
+  That requires tracking branch names separately, or a dedicated audit
+  tool.
 
 ## Safety
 

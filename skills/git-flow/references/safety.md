@@ -131,13 +131,13 @@ Never bury the abort reason in a paragraph. One line, scannable.
 Every workflow run prints, at the start:
 
 ```
-kimi-git-flow: branch=kimi/<slug> base=<default> strategy=<squash|rebase|merge> timeout=<n>m
+kimi-git-flow: branch=<branch> base=<default> strategy=<squash|rebase|merge> timeout=<n>m
 ```
 
 Every workflow run prints, at the end (success or failure):
 
 ```
-kimi-git-flow: result=<merged|aborted|timeout> pr=<#n|url> checks=<green|red|timeout> branch=<kimi/<slug>>
+kimi-git-flow: result=<merged|aborted|timeout> pr=<#n|url> checks=<green|red|timeout> branch=<branch>
 ```
 
 The user can grep `~/.kimi-code/logs/kimi-code.log` for `kimi-git-flow:`

@@ -32,19 +32,19 @@ truth to the user instead:
   but has its own HEAD. The state file's `branch` field matches the
   *writing* worktree's branch, not necessarily the current one.
 - **Detached HEAD.** The workflow never writes a state file while
-  detached (every entry requires a `kimi/<slug>` branch), but reads
+  detached (every entry requires a `<branch>` branch), but reads
   still happen. `/status` will show the most recent entry for
   whatever branch the file last mentioned, even though the user is
   not on it.
 
 The fix in all three cases is the same: switch back to the
-`kimi/<slug>` branch the user actually worked on, then re-run
+`<branch>` branch the user actually worked on, then re-run
 `/status`. The schema in `state.json` is intentionally cheap so a
 stale read is at worst confusing, never destructive.
 
 ```json
 {
-  "branch": "kimi/fix-login-redirect",
+  "branch": "fix/login-redirect",
   "lastAction": "pr-opened",
   "prNumber": 42,
   "prUrl": "https://github.com/owner/repo/pull/42",
@@ -56,7 +56,7 @@ stale read is at worst confusing, never destructive.
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `branch` | string | yes | Always `kimi/<slug>`. Used to confirm the entry matches the current branch — `/status` ignores entries for other branches. |
+| `branch` | string | yes | Always `<branch>`. Used to confirm the entry matches the current branch — `/status` ignores entries for other branches. |
 | `lastAction` | string | yes | One of `branched`, `committed`, `pr-opened`, `watched-green`, `merged`, `abandoned`. See below. |
 | `prNumber` | integer | when applicable | Set on `pr-opened`, `watched-green`, and `merged`. Absent otherwise. |
 | `prUrl` | string | when applicable | Set on `pr-opened`, `watched-green`, and `merged`. Absent otherwise. |
@@ -66,7 +66,7 @@ stale read is at worst confusing, never destructive.
 
 | Value | Written by | Meaning |
 |---|---|---|
-| `branched` | `/branch` or step 1 | A fresh `kimi/<slug>` branch was created from the default branch. No commits yet. |
+| `branched` | `/branch` or step 1 | A fresh `<branch>` branch was created from the default branch. No commits yet. |
 | `committed` | step 2 | The user (or the agent) committed work on the branch. Local check has not run yet. |
 | `pr-opened` | step 3 | The branch is pushed to `origin` and a PR is open. Push and PR opening are a single step; the value covers both. `prNumber` and `prUrl` are set. |
 | `watched-green` | step 4 | Required CI checks reached a terminal green state. PR is ready to merge. |

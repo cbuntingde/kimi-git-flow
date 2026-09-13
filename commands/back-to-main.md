@@ -28,7 +28,7 @@ branch is left intact.
    (capital `-D` because the branch may have unmerged commits — that's
    the point of this command).
 5. If `--delete-remote` was passed: `git push origin --delete <branch>`.
-6. Print `abandoned kimi/<slug>; returned to <default-branch>` and stop.
+6. Print `abandoned <branch>; returned to <default-branch>` and stop.
 
 ## When not to use
 

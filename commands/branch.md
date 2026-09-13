@@ -1,6 +1,6 @@
 ---
 name: branch
-description: Create a new branch named kimi/<slug> from the default branch and stop. Use when you want to drive the rest of the workflow manually.
+description: Create a new branch from the default branch, following the repository's branch-naming convention, and stop. Use when you want to drive the rest of the workflow manually.
 ---
 
 # /kimi-git-flow:branch <slug>
@@ -16,20 +16,20 @@ user on the new branch with a clean working tree.
 If `<slug>` is omitted, derive one from the most recent user message
 (see `skills/git-flow/references/branch-naming.md`).
 
-`--dry-run` runs the preflight, slug derivation, and collision check
-as normal, then prints the exact `git`/`gh` invocations the command
+`--dry-run` runs the preflight, branch-name resolution, and collision
+check as normal, then prints the exact `git`/`gh` invocations the command
 *would* run, without mutating the repo. Use this when you want to
-audit what the procedure will do without committing a branch.
+audit what the procedure will do without creating a branch.
 
 ## What this does
 
 1. Preflight (see `skills/git-flow/SKILL.md` step 0): confirm git repo,
    `gh auth`, clean working tree, and detect default branch.
-2. Build the slug per
-   `skills/git-flow/references/branch-naming.md`. Strip leading `kimi/`
-   if present. Cap at 48 chars. Append `-2`, `-3`, ... on collision.
+2. Resolve the branch name per
+   `skills/git-flow/references/branch-naming.md`. Cap the slug at 48
+   chars. Append `-2`, `-3`, ... on collision.
 3. `git fetch origin <default-branch>`.
-4. `git checkout -b kimi/<slug> origin/<default-branch>`.
+4. `git checkout -b <branch> origin/<default-branch>`.
 5. Print the resolved branch name and stop. **Do not commit, push, or
    open a PR** — that's the user's next step.
 

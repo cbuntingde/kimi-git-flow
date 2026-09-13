@@ -41,9 +41,9 @@ or a public API contract.>
 
 ## What the workflow fills in automatically
 
-- **Title**: derived from the branch slug with `kimi/` stripped and
-  kebab-case → Title Case. Example: `kimi/fix-login-redirect` →
-  `Fix Login Redirect`.
+- **Title**: derived from the branch slug with any `type/` prefix
+  stripped and kebab-case → Title Case. Example: `fix/login-redirect`
+  → `Fix Login Redirect`.
 - **Base branch**: from `gh repo view --json defaultBranchRef`.
 - **Head branch**: the current branch.
 
