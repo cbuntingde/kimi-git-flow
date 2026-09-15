@@ -4,6 +4,10 @@ This workflow waits for required CI checks with `gh pr checks --watch`.
 This file documents exactly what counts as "green" and what to do when
 things go sideways.
 
+If the repository cannot run Actions at all, there is nothing to wait
+for — read "Actions unavailable on this account or repo" below and use
+the step 2.5 local check as the gate.
+
 ## The canonical invocation
 
 ```bash
@@ -34,6 +38,37 @@ workflow treats every reported check as required for the purpose of the
 green/green merge decision. If the user wants to skip an optional check
 (e.g. a flaky `codecov/patch` check), they must say so explicitly before
 the merge runs. There is no automatic skip.
+
+## Actions unavailable on this account or repo
+
+Actions is only available where the account's plan and the repository
+settings allow it. Confirm a run can actually happen before waiting on
+one:
+
+```bash
+gh api "repos/{owner}/{repo}/actions/permissions" -q .enabled
+```
+
+`false` — or a `404`/`403` from `gh api` — means no workflow will ever
+report on this pull request. There is nothing to wait for, so use the
+step 2.5 local check as the merge gate instead:
+
+- Do **not** run `gh pr checks --watch`. The watch only delays the
+  merge.
+- A `pass` or `skipped` local-check result proceeds to step 5.
+- A `fail` local-check result aborts exactly as a red check would; the
+  merge never runs.
+
+Print one line, so the user can see what the merge rested on:
+
+```
+no remote CI: Actions is unavailable for this repository; local check result was <pass|fail|skipped> at step 2.5
+```
+
+The local check only covers the stack it detected. When it reports
+`skipped`, say which of the `local-check.md` reasons applied — the
+change then landed with no automated verification at all, and that
+must not be silent.
 
 ## Required-checks-not-configured case
 
