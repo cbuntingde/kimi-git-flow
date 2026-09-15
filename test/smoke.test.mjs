@@ -53,6 +53,11 @@
 //      the workflow writes must pass the slang and jargon blocklist
 //      in `references/language.md`. The blocklist is loaded from that
 //      file at test time, so adding a token updates every test.
+//  16. CI gate fallback — when Actions is unavailable for the
+//      repository, step 4 must skip `gh pr checks --watch` and treat
+//      the step 2.5 local check as the merge gate. Guards ci-watch.md
+//      and SKILL.md against reverting to an "always wait for the
+//      remote" assumption.
 // Run with `npm test`. Node 20+.
 
 import { test } from "node:test";
@@ -628,6 +633,36 @@ test("language filter: commit messages, PR titles, and PR bodies stay free of bl
       }
     }
   }
+});
+
+test("step 4 uses the local check as the merge gate when Actions is unavailable", () => {
+  const NOTICE =
+    "no remote CI: Actions is unavailable for this repository; local check result was";
+
+  for (const rel of [
+    "skills/git-flow/references/ci-watch.md",
+    "skills/git-flow/SKILL.md",
+  ]) {
+    const md = read(rel);
+    assert.ok(
+      md.includes("actions/permissions"),
+      `${rel} must detect Actions availability via repos/{owner}/{repo}/actions/permissions`,
+    );
+    assert.ok(
+      md.includes(NOTICE),
+      `${rel} must print the Actions-unavailable notice carrying the local check result`,
+    );
+    assert.ok(
+      /step 2\.5/.test(md),
+      `${rel} must name the step 2.5 local check as the merge gate`,
+    );
+  }
+
+  const ciWatch = read("skills/git-flow/references/ci-watch.md");
+  assert.ok(
+    /Do \*\*not\*\* run `gh pr checks --watch`/.test(ciWatch),
+    "ci-watch.md must forbid the watch when Actions is unavailable",
+  );
 });
 
 // Pull every `"..."` string out of a markdown file. These are the

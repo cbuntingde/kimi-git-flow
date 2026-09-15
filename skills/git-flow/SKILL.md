@@ -186,6 +186,24 @@ checks reach a terminal state, then fail if any are `FAILURE`. See
 `references/ci-watch.md` for the exact polling loop. Always try
 `--watch` first; only fall back when `gh` explicitly rejects the flag.
 
+**Actions unavailable.** If the account's plan or the repository
+settings switch Actions off, no check will ever report on the pull
+request. Detect that before waiting:
+
+```bash
+gh api "repos/{owner}/{repo}/actions/permissions" -q .enabled
+```
+
+On `false`, or on a `404`/`403` from `gh api`, skip the watch and use
+the step 2.5 local check as the merge gate: a `pass` or `skipped`
+result proceeds to step 5, a `fail` result aborts. Print:
+
+```
+no remote CI: Actions is unavailable for this repository; local check result was <pass|fail|skipped> at step 2.5
+```
+
+See `references/ci-watch.md` for the full case.
+
 When the workflow reaches step 4 with no remote CI configured (the
 "no required checks" case in `references/ci-watch.md`), print the
 local-check result from step 2.5 so the user has a unified picture of
