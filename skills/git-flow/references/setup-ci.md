@@ -197,6 +197,11 @@ gh pr create \
   --fill
 ```
 
+The commit subject `ci: add GitHub Actions workflow for <stack>` and
+the PR title derived from it must both pass the slang and jargon
+filter in `references/language.md`. The fill body is also subject to
+the same check.
+
 Then print the PR URL and stop. The user runs
 `/kimi-git-flow:watch` and `/kimi-git-flow:merge` to land it.
 

@@ -49,7 +49,10 @@
 //      `git reset --hard` on every local commit being reachable
 //      from `origin/<default-branch>`. Catches drift that would
 //      let the agent silently discard the user's commits.
-//
+//  15. Language filter — every commit message, PR title, and PR body
+//      the workflow writes must pass the slang and jargon blocklist
+//      in `references/language.md`. The blocklist is loaded from that
+//      file at test time, so adding a token updates every test.
 // Run with `npm test`. Node 20+.
 
 import { test } from "node:test";
@@ -165,6 +168,7 @@ const REFERENCE_FILES = [
   "skills/git-flow/references/merge-strategy.md",
   "skills/git-flow/references/pr-template.md",
   "skills/git-flow/references/state.md",
+  "skills/git-flow/references/language.md",
 ];
 
 const COMMAND_FILES = [
@@ -548,3 +552,111 @@ test("soft-rule 4 in safety.md gates `git reset --hard` on every local commit be
     "soft-rule 4 must gate `git reset --hard` on the local-vs-origin commit check",
   );
 });
+
+test("language filter: commit messages, PR titles, and PR bodies stay free of blocked slang and jargon", () => {
+  // Load the blocklist straight out of the rule doc so adding a token
+  // to language.md automatically tightens every other site. Only
+  // `- `token`` list items count — prose backticks in the same section
+  // describe the whole-word rule (`[A-Za-z0-9_]`, `stuffy`, ...) and
+  // must not be mistaken for tokens.
+  const ruleDoc = read("skills/git-flow/references/language.md");
+  const blocklistSection = ruleDoc
+    .split("## Blocklist")[1]
+    .split("## How the workflow applies the rule")[0];
+  const tokens = Array.from(
+    blocklistSection.matchAll(/^- `([a-z][a-z-]*)`$/gm),
+    (m) => m[1],
+  );
+  assert.ok(tokens.length > 0, "language.md must define at least one blocked token");
+  assert.ok(
+    /### Casual filler/.test(blocklistSection) &&
+      /### Development slang and jargon/.test(blocklistSection),
+    "language.md blocklist must keep both the casual-filler and jargon lists",
+  );
+
+  // The workflow writes strings from five sites. We extract the literal
+  // substrings that actually land in commits, PR titles, or PR bodies:
+  //   - commit subjects inside `git commit -m "..."` and quoted in prose
+  //   - PR titles inside `--title "..."` and the template's title rule
+  //   - PR body bullets inside the markdown fences in pr-template.md
+  const sites = [
+    {
+      path: "skills/git-flow/SKILL.md",
+      label: "SKILL.md commit + PR sections",
+      samples: extractQuotedStrings(read("skills/git-flow/SKILL.md")),
+    },
+    {
+      path: "skills/git-flow/references/branch-naming.md",
+      label: "branch-naming.md conventional-commit section",
+      samples: extractQuotedStrings(
+        read("skills/git-flow/references/branch-naming.md"),
+      ).concat(
+        extractBacktickSamples(
+          read("skills/git-flow/references/branch-naming.md"),
+        ),
+      ),
+    },
+    {
+      path: "skills/git-flow/references/pr-template.md",
+      label: "pr-template.md body markdown",
+      samples: extractMarkdownBodyBullets(
+        read("skills/git-flow/references/pr-template.md"),
+      ).concat(
+        extractBacktickSamples(read("skills/git-flow/references/pr-template.md")),
+      ),
+    },
+    {
+      path: "skills/git-flow/references/setup-ci.md",
+      label: "setup-ci.md scaffold commit + PR title",
+      samples: extractQuotedStrings(read("skills/git-flow/references/setup-ci.md")),
+    },
+    {
+      path: "commands/setup-ci.md",
+      label: "commands/setup-ci.md commit subject",
+      samples: extractQuotedStrings(read("commands/setup-ci.md")),
+    },
+  ];
+
+  for (const site of sites) {
+    for (const token of tokens) {
+      const re = new RegExp(`(?<![A-Za-z0-9_])${token}(?![A-Za-z0-9_])`, "i");
+      for (const sample of site.samples) {
+        assert.ok(
+          !re.test(sample),
+          `${site.label} contains blocked token "${token}" in: ${JSON.stringify(sample)}`,
+        );
+      }
+    }
+  }
+});
+
+// Pull every `"..."` string out of a markdown file. These are the
+// strings the agent will pass to `git commit -m` or `--title`.
+function extractQuotedStrings(md) {
+  return Array.from(md.matchAll(/"([^"\n]+)"/g), (m) => m[1]);
+}
+
+// Pull every `` `...` `` string. Catches the conventional-commit
+// subject samples in branch-naming.md and the squash title example
+// in pr-template.md.
+function extractBacktickSamples(md) {
+  return Array.from(md.matchAll(/`([^`\n]+)`/g), (m) => m[1]);
+}
+
+// Pull every "- ..." bullet inside ```markdown fences. These are the
+// exact lines the workflow hands to `gh pr create --body-file`.
+function extractMarkdownBodyBullets(md) {
+  const out = [];
+  const fenceRe = /```markdown\n([\s\S]*?)```/g;
+  let m;
+  while ((m = fenceRe.exec(md))) {
+    for (const line of m[1].split("\n")) {
+      const bullet = line.match(/^- (.+)$/);
+      if (bullet) out.push(bullet[1]);
+      else if (line.trim().length > 0 && !line.startsWith("#")) {
+        out.push(line.trim());
+      }
+    }
+  }
+  return out;
+}

@@ -118,6 +118,10 @@ git commit -m "<conventional-commit subject>
 <optional body explaining why>"
 ```
 
+Both subject and body must pass the language filter in
+`references/language.md` before `git commit` fires. A blocked token
+aborts the step before any commit lands.
+
 Conventional-commit subject format: `<type>(<scope>): <subject>`. Allowed
 types: `feat`, `fix`, `refactor`, `chore`, `docs`, `test`, `perf`,
 `build`, `ci`. Keep the subject under 72 characters.
@@ -154,6 +158,11 @@ gh pr create \
 
 For trivial changes where the user does not want a heavy body, fall back
 to `gh pr create --fill`.
+
+Both the PR title (which becomes the squash-commit subject on merge)
+and every line of the rendered PR body must pass the language
+filter in `references/language.md` before `gh pr create` fires. A
+blocked token aborts the step before the PR is opened.
 
 ### 4. Wait for CI to go green
 
@@ -338,3 +347,5 @@ user should take. Do not print a wall of debug output.
 - `references/setup-ci.md` — `/kimi-git-flow:setup-ci` scaffold logic.
 - `references/merge-strategy.md` — squash vs. rebase vs. merge.
 - `references/safety.md` — hard rules and abort conditions.
+- `references/language.md` — slang and jargon blocklist for commit
+  messages, PR titles, and PR bodies.
