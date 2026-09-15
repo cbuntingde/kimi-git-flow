@@ -47,6 +47,13 @@ or a public API contract.>
 - **Base branch**: from `gh repo view --json defaultBranchRef`.
 - **Head branch**: the current branch.
 
+## Language filter
+
+Both the title and every line of the body rendered from this template
+must pass the slang and jargon filter in `references/language.md`
+before `gh pr create --body-file` fires. A blocked token aborts the
+step.
+
 ## Examples
 
 ### Small fix

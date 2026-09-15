@@ -59,6 +59,9 @@ Combine the resolved convention with the normalized slug:
 - **scope** (optional): one short noun — module, package, or layer.
 - **subject**: imperative, lowercase, no period, ≤ 72 chars.
 
+Both the subject and any body the agent adds must pass the slang and
+jargon filter in `references/language.md` before `git commit` fires.
+
 Examples:
 
 - `fix(auth): handle expired refresh tokens`
