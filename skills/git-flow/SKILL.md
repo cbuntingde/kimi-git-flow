@@ -54,15 +54,18 @@ gh auth status
 # Confirm the working tree is clean.
 test -z "$(git status --porcelain)"
 
-# Detect the default branch (do NOT assume "main").
-DEFAULT_BRANCH=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)
+# Detect the default branch (do NOT assume "main"). KIMI_GIT_FLOW_BASE_BRANCH
+# overrides detection.
+DEFAULT_BRANCH="${KIMI_GIT_FLOW_BASE_BRANCH:-$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)}"
 
 # Confirm local default branch is in sync with origin. Refuse to
 # proceed if there are unpushed local commits — see rule 12 in
 # `references/safety.md`. This gate prevents the agent from
 # stashing or resetting the user's unmerged work to "make the
-# build green."
-unpushed=$(git log --oneline origin/${DEFAULT_BRANCH}..${DEFAULT_BRANCH})
+# build green." The ref is quoted for hygiene: git already rejects
+# refnames with whitespace or glob characters, and a shell variable's
+# contents are never re-expanded, so this is not an injection barrier.
+unpushed=$(git log --oneline "origin/${DEFAULT_BRANCH}..${DEFAULT_BRANCH}")
 if [ -n "$unpushed" ]; then
   echo "unpushed commits on ${DEFAULT_BRANCH}:"
   echo "$unpushed"
@@ -99,8 +102,8 @@ Examples: `feature/my-change`, `fix/login-redirect`,
 `refactor/error-types`.
 
 ```bash
-git fetch origin <default-branch>
-git checkout -b <branch> origin/<default-branch>
+git fetch origin "$DEFAULT_BRANCH"
+git checkout -b "<branch>" "origin/$DEFAULT_BRANCH"
 ```
 
 If the branch already exists locally or remotely, append `-2`, `-3`, ...
@@ -219,10 +222,18 @@ See `references/ci-watch.md` for the full semantics (what counts as
 ### 5. Merge
 
 ```bash
+# Read the documented strategy override. Hardcoding --squash made
+# KIMI_GIT_FLOW_MERGE_STRATEGY a documented no-op.
+case "${KIMI_GIT_FLOW_MERGE_STRATEGY:-squash}" in
+  rebase) STRATEGY=--rebase ;;
+  merge)  STRATEGY=--merge  ;;
+  *)      STRATEGY=--squash ;;
+esac
+
 if [ "${KIMI_GIT_FLOW_DELETE_REMOTE_BRANCH:-0}" = "1" ]; then
-  gh pr merge --squash --delete-branch --body "Merged by kimi-git-flow"
+  gh pr merge "$STRATEGY" --delete-branch --body "Merged by kimi-git-flow"
 else
-  gh pr merge --squash --body "Merged by kimi-git-flow"
+  gh pr merge "$STRATEGY" --body "Merged by kimi-git-flow"
 fi
 ```
 

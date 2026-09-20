@@ -16,8 +16,10 @@
 //      silently breaks `/status` rendering.
 //   6. CI matrix — the dogfooded `.github/workflows/ci.yml` must pin
 //      `actions/checkout` and `actions/setup-node` to a full
-//      `@vX.Y.Z` tag, not the mutable `@vX`. A silent upgrade would
-//      change test behavior under our feet.
+//      `@vX.Y.Z` tag, declare least-privilege
+//      `permissions: contents: read`, and install with a bare
+//      `npm ci` (no `|| npm install` fallback that silently
+//      re-resolves an absent lockfile).
 //   7. `--pr` hint — `commands/watch.md` and `commands/merge.md` must
 //      surface the exact `/kimi-git-flow:pr` next-step command when
 //      the user invokes them with no PR open. Otherwise the user
@@ -58,6 +60,12 @@
 //      the step 2.5 local check as the merge gate. Guards ci-watch.md
 //      and SKILL.md against reverting to an "always wait for the
 //      remote" assumption.
+//  17. Merge strategy — SKILL.md step 5 reads
+//      KIMI_GIT_FLOW_MERGE_STRATEGY instead of hardcoding `--squash`.
+//  18. Least privilege — the dogfooded workflow and the generated
+//      templates declare `permissions: contents: read`.
+//  19. Ref hygiene — SKILL.md step 0 quotes every default-branch
+//      expansion (defense in depth; git validates refnames).
 // Run with `npm test`. Node 20+.
 
 import { test } from "node:test";
@@ -79,37 +87,30 @@ function exists(rel) {
   return existsSync(resolve(root, rel));
 }
 
-/** Pull YAML frontmatter (between leading `---` fences) into a plain object. */
-function parseFrontmatter(md) {
-  const m = md.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
-  if (!m) return {};
-  const out = {};
-  for (const line of m[1].split(/\r?\n/)) {
-    const ix = line.indexOf(":");
-    if (ix === -1) continue;
-    const key = line.slice(0, ix).trim();
-    const val = line.slice(ix + 1).trim().replace(/^["']|["']$/g, "");
-    out[key] = val;
-  }
-  return out;
+/** Escape every regex metacharacter so file content can never be read as a pattern. */
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+const MAX_SLUG = 48;
+
 /**
- * Strict frontmatter validator.
+ * Strict, dependency-free YAML-frontmatter parser for the subset this repo
+ * uses: flat `key: value` scalars, optionally double- or single-quoted.
  *
- * `parseFrontmatter` above is deliberately lenient — it slices each line on
- * the first `:`, so it cannot tell valid YAML from a manifest the host will
- * reject and silently skip. That is exactly how the `git-flow` skill was
- * disabled: an unquoted `description` value contained a colon followed by a
- * space (`... workflow: fresh ...`), which YAML reads as a nested mapping,
- * and the host logged `Skipping invalid skill` and dropped it.
+ * This is the only frontmatter parser. Its former lenient sibling sliced each
+ * line on the first `:`, so it could not tell valid YAML from a manifest the
+ * host rejects and silently skips — exactly how the `git-flow` skill was
+ * disabled when an unquoted `description` contained a colon followed by a
+ * space (`... workflow: fresh ...`). One parser, one contract.
  *
- * This validator returns the parsed object and throws with a precise message
- * on the constructs that make frontmatter invalid YAML. It is intentionally
- * a small, dependency-free guard for the frontmatter subset this repo uses.
+ * It throws with the offending line number on constructs that make the
+ * frontmatter invalid YAML, and on a missing `name`/`description`. Inline
+ * comments are deliberately unsupported so a ` #` can never silently become
+ * part of a value.
  */
-function parseFrontmatterStrict(md) {
-  const m = md.match(/^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/);
+function parseFrontmatter(md) {
+  const m = md.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
   if (!m) throw new Error("missing YAML frontmatter (`---` fenced block)");
 
   const out = {};
@@ -136,7 +137,7 @@ function parseFrontmatterStrict(md) {
         throw new Error(`line ${n}: unquoted value contains ": " — wrap the value in quotes: ${JSON.stringify(line)}`);
       }
       if (val.includes(" #")) {
-        throw new Error(`line ${n}: unquoted value contains " #" — wrap the value in quotes: ${JSON.stringify(line)}`);
+        throw new Error(`line ${n}: inline comments are not supported — drop it or quote the value: ${JSON.stringify(line)}`);
       }
     }
     out[key] = quoted ? val.slice(1, -1) : val;
@@ -147,21 +148,36 @@ function parseFrontmatterStrict(md) {
   return out;
 }
 
-/** Replicate the slug rule from skills/git-flow/references/branch-naming.md. */
+/**
+ * Normalize a branch slug per `references/branch-naming.md` §Slug rules:
+ * lowercase → kebab-case → strip `[^a-z0-9]` → cap at MAX_SLUG by dropping
+ * WHOLE WORDS from the right (the doc forbids mid-word truncation) → trim a
+ * trailing dash. The "first one or two noun phrases" step is semantic, so it
+ * lives in the prompt, not here.
+ */
 function slug(input) {
-  return input
+  const kebab = String(input)
     .toLowerCase()
-    .replace(/^kimi:?\s*/, "")
     .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48)
-    .replace(/-+$/, "");
+    .replace(/^-+|-+$/g, "");
+  if (kebab.length <= MAX_SLUG) return kebab;
+
+  const kept = [];
+  let len = 0;
+  for (const word of kebab.split("-")) {
+    const next = len + word.length + (kept.length ? 1 : 0);
+    if (next > MAX_SLUG) break;
+    len = next;
+    kept.push(word);
+  }
+  // A single token longer than the cap leaves no whole word that fits; hard
+  // cut so the slug is never empty (`fix/` would be an invalid branch).
+  return kept.length ? kept.join("-") : kebab.slice(0, MAX_SLUG).replace(/-+$/, "");
 }
 
-/** True iff a markdown file mentions another reference file by path. */
+/** True iff a markdown file cites `references/<target>` as a link or code span. */
 function references(md, target) {
-  const re = new RegExp(`references/${target.replace(/[/.]/g, "\\$&")}\\b`);
-  return re.test(md);
+  return new RegExp(`references/${escapeRegExp(target)}\\b`).test(md);
 }
 
 const REFERENCE_FILES = [
@@ -236,33 +252,31 @@ test("package.json declares the test script, lint:links, and module type", () =>
 test("every command markdown has name + description frontmatter", () => {
   for (const rel of COMMAND_FILES) {
     assert.ok(exists(rel), `${rel} must exist`);
-    const fm = parseFrontmatter(read(rel));
-    assert.ok(fm.name, `${rel} missing frontmatter name`);
-    assert.ok(fm.description, `${rel} missing frontmatter description`);
+    // parseFrontmatter throws when name/description are missing or malformed.
+    const { description } = parseFrontmatter(read(rel));
     assert.ok(
-      fm.description.length < 200,
-      `${rel} description is ${fm.description.length} chars; keep under 200`,
+      description.length < 200,
+      `${rel} description is ${description.length} chars; keep under 200`,
     );
   }
 });
 
 test("SKILL.md has name + description frontmatter", () => {
-  const fm = parseFrontmatter(read("skills/git-flow/SKILL.md"));
-  assert.equal(fm.name, "git-flow");
-  assert.ok(fm.description);
+  const { name, description } = parseFrontmatter(read("skills/git-flow/SKILL.md"));
+  assert.equal(name, "git-flow");
   assert.ok(
-    fm.description.length < 250,
-    `SKILL.md description is ${fm.description.length} chars; keep under 250`,
+    description.length < 250,
+    `SKILL.md description is ${description.length} chars; keep under 250`,
   );
 });
 
 test("frontmatter parses as valid YAML (host-rejectable constructs are rejected)", () => {
-  // The lenient parseFrontmatter is not enough: it slices on the first `:`
-  // and so accepts frontmatter the host rejects and silently skips. Every
-  // manifest the host reads must parse under the strict validator.
+  // Every manifest the host reads must parse under the strict validator; the
+  // lenient parser was removed precisely because it accepted frontmatter the
+  // host rejects and silently skips.
   for (const rel of ROOT_FILES) {
     assert.doesNotThrow(
-      () => parseFrontmatterStrict(read(rel)),
+      () => parseFrontmatter(read(rel)),
       `${rel} has invalid YAML frontmatter`,
     );
   }
@@ -270,24 +284,31 @@ test("frontmatter parses as valid YAML (host-rejectable constructs are rejected)
   // Regression guard: the exact construct that disabled the git-flow skill —
   // an unquoted scalar containing a colon followed by a space.
   assert.throws(
-    () => parseFrontmatterStrict("---\nname: git-flow\ndescription: a workflow: b\n---\n"),
+    () => parseFrontmatter("---\nname: git-flow\ndescription: a workflow: b\n---\n"),
     /unquoted value contains ": "/,
     "an unquoted ': ' in a scalar must be rejected",
   );
 
   // Quoting the same value is the documented fix and must pass.
   assert.doesNotThrow(
-    () => parseFrontmatterStrict('---\nname: git-flow\ndescription: "a workflow: b"\n---\n'),
+    () => parseFrontmatter('---\nname: git-flow\ndescription: "a workflow: b"\n---\n'),
     "a quoted scalar containing ': ' must be accepted",
   );
 
   // A nested key containing a colon without a following space is valid YAML.
   assert.doesNotThrow(
     () =>
-      parseFrontmatterStrict(
+      parseFrontmatter(
         "---\nname: x\ndescription: y\nmetadata:\n  kimi:origin: kimi-git-flow\n---\n",
       ),
     "a `kimi:origin` nested key must be accepted",
+  );
+
+  // A missing required key must throw, not silently yield an empty object.
+  assert.throws(
+    () => parseFrontmatter("---\nname: x\n---\n"),
+    /missing the required key `description`/,
+    "a frontmatter block without `description` must be rejected",
   );
 });
 
@@ -323,30 +344,51 @@ test("no reference file is orphaned — every reference must have an inbound lin
   }
 });
 
-test("branch slug satisfies the documented invariants", () => {
-  const cases = [
+test("branch slug satisfies the documented invariants (branch-naming.md §Slug rules)", () => {
+  for (const input of [
     "rename foo to bar",
     "fix the login redirect bug",
     "add a /healthz endpoint",
     "phase 2: rbac",
     "refactor the error types in src/errors.rs",
-    "kimi: rename foo to bar",
-  ];
-  for (const input of cases) {
+    "  Mixed CASE  and!!!punct  ",
+  ]) {
     const s = slug(input);
-    assert.match(s, /^[a-z0-9-]+$/, `slug(${JSON.stringify(input)}) must be lowercase kebab-case: got ${s}`);
-    assert.ok(!s.endsWith("-"), `slug must not end with -: ${s}`);
-    assert.ok(s.length <= 48, `slug must be ≤48 chars: ${s}`);
-    assert.ok(!s.startsWith("kimi"), `slug must not carry the kimi/ prefix from input: ${s}`);
+    assert.match(
+      s,
+      /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+      `slug(${JSON.stringify(input)}) must be lowercase kebab-case: got ${s}`,
+    );
+    assert.ok(s.length <= MAX_SLUG, `slug must be ≤${MAX_SLUG} chars: ${s}`);
   }
-  const long = "a".repeat(200);
-  assert.ok(slug(long).length <= 48);
-  assert.ok(!slug("foo bar ").endsWith("-"));
-  assert.equal(slug("kimi/foo-bar"), "foo-bar");
-  assert.equal(slug("kimi: foo bar"), "foo-bar");
+
+  // Rule 3: cap at 48 by dropping WHOLE WORDS from the right — never truncate
+  // mid-word. The previous `.slice(0, 48)` violated the doc it cites.
+  const long = Array.from({ length: 40 }, () => "word").join(" ");
+  const capped = slug(long);
+  assert.ok(capped.length <= MAX_SLUG, `capped slug must be ≤${MAX_SLUG} chars: ${capped}`);
+  assert.ok(!capped.endsWith("-"), `capped slug must not end with -: ${capped}`);
+  assert.ok(
+    long.replace(/\s+/g, "-").startsWith(capped),
+    "the cap must be a whole-word prefix of the kebab input, not a slice",
+  );
+  assert.ok(!capped.endsWith("wor"), "the cap must not truncate mid-word");
+
+  // A single over-long token has no whole word that fits; the slug must still
+  // be non-empty and within the cap (an empty slug would render `fix/`).
+  const single = slug("x".repeat(80));
+  assert.equal(single.length, MAX_SLUG, "a single over-long token must hard-cut to the cap");
+  assert.ok(single.length > 0, "the slug must never be empty");
+
+  // The deterministic rules, on inputs with no semantic ambiguity. The doc's
+  // noun-phrase examples depend on interpretation, so only the mechanical
+  // cases are pinned here.
+  assert.equal(slug("phase 2: rbac"), "phase-2-rbac");
+  assert.equal(slug("rename foo to bar"), "rename-foo-to-bar");
   assert.equal(slug("foo   bar"), "foo-bar");
   assert.equal(slug("foo!!!bar"), "foo-bar");
   assert.equal(slug("foo___bar"), "foo-bar");
+  assert.equal(slug("foo bar "), "foo-bar");
 });
 
 test("command markdown has coherent numbered steps (no orphaned prose)", () => {
@@ -419,8 +461,13 @@ test("state.md does not reintroduce 'pushed' as a separate lastAction value", ()
   assert.ok(!tableRow, "state.md must not list 'pushed' as a lastAction value in any table row");
 });
 
-test("dogfooded CI workflow pins actions/checkout and actions/setup-node to a specific minor version", () => {
+test("dogfooded CI workflow is least-privilege and installs strictly from the lockfile", () => {
   const yml = read(".github/workflows/ci.yml");
+  assert.match(
+    yml,
+    /^permissions:\r?\n[ \t]+contents:[ \t]*read[ \t]*\r?$/m,
+    "CI must declare least-privilege `permissions: contents: read`",
+  );
   assert.match(
     yml,
     /uses:\s*actions\/checkout@v\d+\.\d+\.\d+/,
@@ -433,9 +480,48 @@ test("dogfooded CI workflow pins actions/checkout and actions/setup-node to a sp
   );
   assert.match(
     yml,
-    /\b(npm ci|npm install --ci)\b/,
-    "CI must install from the lockfile (npm ci or npm install --ci)",
+    /^\s*-\s*run:\s*npm ci\s*$/m,
+    "CI must install strictly from the lockfile with a bare `npm ci`",
   );
+  assert.doesNotMatch(
+    yml,
+    /^\s*-\s*run:.*\|\|/m,
+    "no CI step may fall back to `npm install` when `npm ci` fails",
+  );
+});
+
+test("the generated CI templates are least-privilege too", () => {
+  const tmpl = read("skills/git-flow/references/setup-ci.md");
+  const templates = tmpl.match(/```yaml[\s\S]*?```/g) ?? [];
+  assert.ok(templates.length >= 4, "setup-ci.md must document the Node/Python/Rust/Go templates");
+  for (const block of templates) {
+    assert.match(
+      block,
+      /^permissions:\r?\n[ \t]+contents:[ \t]*read[ \t]*\r?$/m,
+      "every generated workflow template must declare `permissions: contents: read`",
+    );
+  }
+});
+
+test("SKILL.md quotes every default-branch expansion in step 0", () => {
+  const preflight = read("skills/git-flow/SKILL.md").split("### 1. Create the branch")[0];
+  assert.ok(
+    /"origin\/\$\{DEFAULT_BRANCH\}\.\.\$\{DEFAULT_BRANCH\}"/.test(preflight),
+    "the divergence check must quote the ref expansion",
+  );
+});
+
+test("SKILL.md step 5 honors KIMI_GIT_FLOW_MERGE_STRATEGY instead of hardcoding --squash", () => {
+  const step5 = read("skills/git-flow/SKILL.md").split("### 5. Merge")[1].split("### 6.")[0];
+  assert.ok(
+    /KIMI_GIT_FLOW_MERGE_STRATEGY/.test(step5),
+    "step 5 must read KIMI_GIT_FLOW_MERGE_STRATEGY",
+  );
+  assert.ok(
+    /--rebase/.test(step5) && /--merge/.test(step5),
+    "step 5 must map the rebase and merge strategies",
+  );
+  assert.ok(/"\$STRATEGY"/.test(step5), "step 5 must pass the strategy as a quoted variable");
 });
 
 test("watch.md and merge.md surface /kimi-git-flow:pr when no PR is open", () => {
@@ -688,7 +774,7 @@ function extractMarkdownBodyBullets(md) {
     for (const line of m[1].split("\n")) {
       const bullet = line.match(/^- (.+)$/);
       if (bullet) out.push(bullet[1]);
-      else if (line.trim().length > 0 && !line.startsWith("#")) {
+      else if (line.trim().length > 0 && !line.trimStart().startsWith("#")) {
         out.push(line.trim());
       }
     }
