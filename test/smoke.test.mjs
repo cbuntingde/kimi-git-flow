@@ -241,12 +241,33 @@ test("skillInstructions references the non-negotiable safety rules", () => {
   }
 });
 
-test("package.json declares the test script, lint:links, and module type", () => {
+test("package.json declares the test script, a working lint:links script, and module type", () => {
   const pkg = JSON.parse(read("package.json"));
   assert.equal(pkg.type, "module");
   assert.ok(pkg.scripts && pkg.scripts.test, "test script must exist");
-  assert.ok(pkg.scripts["lint:links"], "lint:links script must exist");
   assert.ok(pkg.engines && pkg.engines.node);
+
+  const lintLinks = pkg.scripts["lint:links"];
+  assert.ok(lintLinks, "lint:links script must exist");
+  // Node ignores `--test-name-pattern` when it trails the positional file
+  // path, which silently turned lint:links into a full-suite run. Keep the
+  // option before the path so the filter actually applies.
+  assert.match(
+    lintLinks,
+    /--test-name-pattern=\S+\s+\S*smoke\.test\.mjs/,
+    `lint:links must place --test-name-pattern before the test file: ${lintLinks}`,
+  );
+  // The pattern must match at least one test name, so the script can never
+  // silently select nothing.
+  const pattern = lintLinks.match(/--test-name-pattern=(\S+)/)?.[1];
+  const names = Array.from(
+    read("test/smoke.test.mjs").matchAll(/^test\("([^"]+)"/gm),
+    (m) => m[1],
+  );
+  assert.ok(
+    names.some((name) => new RegExp(pattern).test(name)),
+    `lint:links pattern ${JSON.stringify(pattern)} matches no test in smoke.test.mjs`,
+  );
 });
 
 test("every command markdown has name + description frontmatter", () => {

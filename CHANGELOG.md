@@ -6,6 +6,13 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`npm run lint:links` ran the whole suite.** `--test-name-pattern` placed
+  after the test-file path is ignored by Node, so the script was no faster than
+  `npm test`. The flag now precedes the path, and a guard asserts the ordering
+  and that the pattern matches at least one test name.
+
 ## [0.3.0] — 2026-09-19
 
 ### Security
