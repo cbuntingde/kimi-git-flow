@@ -54,9 +54,10 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Dogfooded `.github/workflows/ci.yml` now pins `actions/checkout` and
   `actions/setup-node` to a specific minor version (`@v4.2.2` and
   `@v4.1.0`). A silent upgrade of `actions/*` can no longer change
-  test behavior under our feet. The workflow also installs with
-  `npm ci || npm install` so it honors the lockfile the same way
-  `references/local-check.md` does.
+  test behavior under our feet. A committed `package-lock.json` and a
+  bare `npm ci` (see the Security entry above) replace the earlier
+  `npm ci || npm install` fallback, which never honored a lockfile
+  because none was committed.
 - `references/safety.md` rule 8 now spells out the
   `/kimi-git-flow:back-to-main --delete-remote` approval contract:
   typing the flag is the explicit approval, the workflow refuses to
