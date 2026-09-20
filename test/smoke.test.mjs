@@ -235,6 +235,7 @@ test("skillInstructions references the non-negotiable safety rules", () => {
     { name: "no co-mingled changes", re: /co[- ]?mingle|unrelated\s*changes?/i },
     { name: "no silent revert", re: /silent revert|checkout\s*--|reset\s*--hard|stash drop/i },
     { name: "no branching off unpushed default", re: /unpushed\s*commits?/i },
+    { name: "no-Actions merge gate", re: /Actions is unavailable/i },
   ];
   for (const r of rules) {
     assert.ok(r.re.test(s), `skillInstructions must mention: ${r.name}`);
