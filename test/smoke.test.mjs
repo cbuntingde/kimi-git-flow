@@ -1,113 +1,96 @@
 // Smoke test for kimi-git-flow plugin integrity.
 //
-// Catches regressions in:
-//   1. kimi.plugin.json — must parse as JSON, must have the keys the
-//      host runtime reads (name, version, skills, commands, hooks).
-//   2. Frontmatter — every commands/*.md and skills/git-flow/SKILL.md
-//      must carry `name` and `description` so the host can register
-//      and trigger them.
-//   3. Reference cross-links — every `references/...md` link inside
-//      SKILL.md and the commands must point to a file that exists.
-//   4. Slug rule — the documented slug transformation must hold for
-//      the canonical examples in branch-naming.md. This is the
-//      contract every other command depends on.
-//   5. State enum — `lastAction` values in SKILL.md, state.md, and
-//      status.md must stay in sync with the set guarded here. Drift
-//      silently breaks `/status` rendering.
-//   6. CI matrix — the dogfooded `.github/workflows/ci.yml` must pin
-//      `actions/checkout` and `actions/setup-node` to a full
-//      `@vX.Y.Z` tag, declare least-privilege
-//      `permissions: contents: read`, and install with a bare
-//      `npm ci` (no `|| npm install` fallback that silently
-//      re-resolves an absent lockfile).
-//   7. `--pr` hint — `commands/watch.md` and `commands/merge.md` must
-//      surface the exact `/kimi-git-flow:pr` next-step command when
-//      the user invokes them with no PR open. Otherwise the user
-//      gets a `gh pr view` failure with no recovery path.
-//   8. State cross-link — every command that reads workflow state
-//      must cite `references/state.md` so a schema change doesn't
-//      break the command silently.
-//   9. Orphans — every reference file must have at least one inbound
-//      link from SKILL.md or a command. A reference nobody cites is
-//      dead documentation.
-//  10. Dry-run — `/branch`, `/pr`, and `/merge` must each document a
-//      `--dry-run` flag in their Usage section so the audit path is
-//      always available.
-//  11. Rule 11/12 — `references/safety.md` documents "no silent
-//      revert" (forbidding `git checkout --`, `git reset --hard`,
-//      `git stash drop`, `git clean -fd` mid-workflow) and "no
-//      branching off a divergent default branch". The forbidden
-//      verbs must appear literally so the rule can't be silently
-//      weakened.
-//  12. Preflight gate — SKILL.md step 0 includes a `git log` check
-//      comparing local vs origin default branch and refuses to
-//      proceed on unpushed commits. Catches drift that would
-//      resurrect the silent-revert failure mode.
-//  13. Step 6 recovery — SKILL.md step 6 documents all three
-//      divergence-recovery paths (`--rebase`, `--no-rebase`,
-//      `reset --hard`) with the reset safety gate spelled out and
-//      cross-references to rules 11 and 12.
-//  14. Soft-rule 4 reset gate — safety.md soft-rule 4 gates
-//      `git reset --hard` on every local commit being reachable
-//      from `origin/<default-branch>`. Catches drift that would
-//      let the agent silently discard the user's commits.
-//  15. Language filter — every commit message, PR title, and PR body
-//      the workflow writes must pass the slang and jargon blocklist
-//      in `references/language.md`. The blocklist is loaded from that
-//      file at test time, so adding a token updates every test.
-//  16. CI gate fallback — when Actions is unavailable for the
-//      repository, step 4 must skip `gh pr checks --watch` and treat
-//      the step 2.5 local check as the merge gate. Guards ci-watch.md
-//      and SKILL.md against reverting to an "always wait for the
-//      remote" assumption.
-//  17. Merge strategy — SKILL.md step 5 reads
-//      KIMI_GIT_FLOW_MERGE_STRATEGY instead of hardcoding `--squash`.
-//  18. Least privilege — the dogfooded workflow and the generated
-//      templates declare `permissions: contents: read`.
-//  19. Ref hygiene — SKILL.md step 0 quotes every default-branch
-//      expansion (defense in depth; git validates refnames).
+// The plugin is prose plus a small manifest, so its regression surface is
+// structural: manifests that must parse, frontmatter the host can register,
+// cross-links that must resolve, and the safety / enum contracts the
+// procedure and the slash commands share.
+//
+// Every file list is derived from disk (see `markdownIn`). A hand-maintained
+// manifest drifts: a newly added command or reference would silently escape
+// the frontmatter, cross-link, orphan, and dry-run checks.
+//
 // Run with `npm test`. Node 20+.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
 
+const read = (rel) => readFileSync(resolve(root, rel), "utf8");
+const exists = (rel) => existsSync(resolve(root, rel));
+
+const markdownIn = (dir) =>
+  readdirSync(resolve(root, dir))
+    .filter((f) => f.endsWith(".md"))
+    .sort()
+    .map((f) => `${dir}/${f}`);
+
+const COMMAND_FILES = markdownIn("commands");
+const REFERENCE_FILES = markdownIn("skills/git-flow/references");
+const SKILL_FILE = "skills/git-flow/SKILL.md";
+const STATE_FILE = "skills/git-flow/references/state.md";
+const ROOT_FILES = [SKILL_FILE, ...COMMAND_FILES];
+
+const MAX_SLUG = 48;
+
+// The single source of truth for the persisted action enum. Every doc that
+// renders it must agree with this set — drift silently breaks `/status`.
+const ALLOWED_ACTIONS = [
+  "abandoned",
+  "branched",
+  "committed",
+  "merged",
+  "pr-opened",
+  "watched-green",
+];
+
 // --- Helpers --------------------------------------------------------------
 
-function read(rel) {
-  return readFileSync(resolve(root, rel), "utf8");
-}
-
-function exists(rel) {
-  return existsSync(resolve(root, rel));
-}
-
-/** Escape every regex metacharacter so file content can never be read as a pattern. */
+/** Escape every regex metacharacter so file content is matched literally. */
 function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-const MAX_SLUG = 48;
+/** Body of the first `## <heading>` section, heading line excluded. */
+function section(md, heading) {
+  const body = md.split(/^## /m).find((part) => part.startsWith(heading));
+  if (body === undefined) throw new Error(`missing section: ## ${heading}`);
+  return body.split(/\r?\n/).slice(1).join("\n");
+}
+
+/** Backticked lowercase-kebab tokens from the first cell of each table row. */
+function firstCellTokens(text) {
+  const out = new Set();
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trimStart().startsWith("|")) continue;
+    const m = (line.split("|")[1] ?? "").match(/`([^`]+)`/);
+    if (m) out.add(m[1]);
+  }
+  return out;
+}
+
+/** Backticked lowercase-kebab tokens from every cell of each table row. */
+function tableTokens(text) {
+  const out = new Set();
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trimStart().startsWith("|")) continue;
+    for (const m of line.matchAll(/`([a-z][a-z-]*)`/g)) out.add(m[1]);
+  }
+  return out;
+}
 
 /**
  * Strict, dependency-free YAML-frontmatter parser for the subset this repo
  * uses: flat `key: value` scalars, optionally double- or single-quoted.
  *
- * This is the only frontmatter parser. Its former lenient sibling sliced each
- * line on the first `:`, so it could not tell valid YAML from a manifest the
- * host rejects and silently skips — exactly how the `git-flow` skill was
- * disabled when an unquoted `description` contained a colon followed by a
- * space (`... workflow: fresh ...`). One parser, one contract.
- *
- * It throws with the offending line number on constructs that make the
- * frontmatter invalid YAML, and on a missing `name`/`description`. Inline
- * comments are deliberately unsupported so a ` #` can never silently become
- * part of a value.
+ * The host rejects frontmatter whose unquoted scalar contains `: `, a
+ * trailing `:`, or an inline comment — and silently skips the command or
+ * skill when it does. This parser throws on those constructs so the failure
+ * surfaces here instead of as a missing slash command.
  */
 function parseFrontmatter(md) {
   const m = md.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
@@ -118,9 +101,8 @@ function parseFrontmatter(md) {
     const n = i + 1;
     if (line.trim() === "" || line.trimStart().startsWith("#")) return;
 
-    // A mapping entry: `key:` or `key: value`. The key may itself contain a
-    // colon when it is not followed by a space (e.g. `kimi:origin`), so the
-    // key group is non-greedy and stops at the first `: ` or trailing `:`.
+    // A key may itself contain a colon when not followed by a space
+    // (e.g. `kimi:origin`), so the key group is non-greedy.
     const entry = line.match(/^\s*(.*?):(?:[ \t]+(.*))?$/);
     if (!entry) {
       throw new Error(`line ${n}: not a "key: value" mapping entry: ${JSON.stringify(line)}`);
@@ -151,15 +133,23 @@ function parseFrontmatter(md) {
 /**
  * Normalize a branch slug per `references/branch-naming.md` §Slug rules:
  * lowercase → kebab-case → strip `[^a-z0-9]` → cap at MAX_SLUG by dropping
- * WHOLE WORDS from the right (the doc forbids mid-word truncation) → trim a
- * trailing dash. The "first one or two noun phrases" step is semantic, so it
- * lives in the prompt, not here.
+ * whole words from the right (never truncate mid-word) → trim trailing dash.
+ * The "first one or two noun phrases" step is semantic and lives in the
+ * prompt, not here.
  */
 function slug(input) {
   const kebab = String(input)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+
+  // An input with no alphanumerics normalizes to nothing. Returning "" would
+  // render an invalid branch like `fix/`, so refuse instead.
+  if (kebab === "") {
+    throw new Error(
+      `cannot derive a slug from ${JSON.stringify(input)}: it contains no [a-z0-9] characters`,
+    );
+  }
   if (kebab.length <= MAX_SLUG) return kebab;
 
   const kept = [];
@@ -170,8 +160,8 @@ function slug(input) {
     len = next;
     kept.push(word);
   }
-  // A single token longer than the cap leaves no whole word that fits; hard
-  // cut so the slug is never empty (`fix/` would be an invalid branch).
+  // A single over-long token leaves no whole word that fits; hard-cut so the
+  // slug is never empty.
   return kept.length ? kept.join("-") : kebab.slice(0, MAX_SLUG).replace(/-+$/, "");
 }
 
@@ -180,35 +170,10 @@ function references(md, target) {
   return new RegExp(`references/${escapeRegExp(target)}\\b`).test(md);
 }
 
-const REFERENCE_FILES = [
-  "skills/git-flow/references/branch-naming.md",
-  "skills/git-flow/references/safety.md",
-  "skills/git-flow/references/local-check.md",
-  "skills/git-flow/references/setup-ci.md",
-  "skills/git-flow/references/ci-watch.md",
-  "skills/git-flow/references/merge-strategy.md",
-  "skills/git-flow/references/pr-template.md",
-  "skills/git-flow/references/state.md",
-  "skills/git-flow/references/language.md",
-];
-
-const COMMAND_FILES = [
-  "commands/branch.md",
-  "commands/pr.md",
-  "commands/watch.md",
-  "commands/merge.md",
-  "commands/status.md",
-  "commands/back-to-main.md",
-  "commands/setup-ci.md",
-];
-
-const ROOT_FILES = ["skills/git-flow/SKILL.md", ...COMMAND_FILES];
-
 // --- Tests ----------------------------------------------------------------
 
 test("kimi.plugin.json is well-formed and exposes the host-runtime keys", () => {
-  const raw = read("kimi.plugin.json");
-  const cfg = JSON.parse(raw);
+  const cfg = JSON.parse(read("kimi.plugin.json"));
   assert.equal(cfg.name, "kimi-git-flow");
   assert.ok(cfg.version, "version must be set");
   assert.equal(cfg.skills, "./skills/");
@@ -220,13 +185,12 @@ test("kimi.plugin.json is well-formed and exposes the host-runtime keys", () => 
   );
   assert.ok(
     cfg.skillInstructions.length < 1200,
-    `skillInstructions is ${cfg.skillInstructions.length} chars; should be under 1200 to avoid host truncation`,
+    `skillInstructions is ${cfg.skillInstructions.length} chars; keep it under 1200 to avoid host truncation`,
   );
 });
 
 test("skillInstructions references the non-negotiable safety rules", () => {
-  const cfg = JSON.parse(read("kimi.plugin.json"));
-  const s = cfg.skillInstructions;
+  const { skillInstructions: s } = JSON.parse(read("kimi.plugin.json"));
   assert.ok(typeof s === "string" && s.length > 0, "skillInstructions must be a non-empty string");
   const rules = [
     { name: "no force-push default", re: /force-push/i },
@@ -246,87 +210,66 @@ test("package.json declares the test script, a working lint:links script, and mo
   const pkg = JSON.parse(read("package.json"));
   assert.equal(pkg.type, "module");
   assert.ok(pkg.scripts && pkg.scripts.test, "test script must exist");
-  assert.ok(pkg.engines && pkg.engines.node);
+  assert.ok(pkg.engines && pkg.engines.node, "engines.node must be set");
 
   const lintLinks = pkg.scripts["lint:links"];
   assert.ok(lintLinks, "lint:links script must exist");
   // Node ignores `--test-name-pattern` when it trails the positional file
-  // path, which silently turned lint:links into a full-suite run. Keep the
-  // option before the path so the filter actually applies.
+  // path, which would silently turn lint:links into a full-suite run.
   assert.match(
     lintLinks,
     /--test-name-pattern=\S+\s+\S*smoke\.test\.mjs/,
     `lint:links must place --test-name-pattern before the test file: ${lintLinks}`,
   );
-  // The pattern must match at least one test name, so the script can never
-  // silently select nothing.
+  // The pattern must select at least one test, or the script silently runs
+  // nothing and exits 0.
   const pattern = lintLinks.match(/--test-name-pattern=(\S+)/)?.[1];
-  const names = Array.from(
-    read("test/smoke.test.mjs").matchAll(/^test\("([^"]+)"/gm),
-    (m) => m[1],
-  );
+  const names = Array.from(read("test/smoke.test.mjs").matchAll(/^test\("([^"]+)"/gm), (m) => m[1]);
   assert.ok(
     names.some((name) => new RegExp(pattern).test(name)),
     `lint:links pattern ${JSON.stringify(pattern)} matches no test in smoke.test.mjs`,
   );
 });
 
+test("the derived file manifests are non-empty", () => {
+  assert.ok(COMMAND_FILES.length > 0, "commands/ must contain at least one .md file");
+  assert.ok(REFERENCE_FILES.length > 0, "skills/git-flow/references/ must contain at least one .md file");
+});
+
 test("every command markdown has name + description frontmatter", () => {
   for (const rel of COMMAND_FILES) {
     assert.ok(exists(rel), `${rel} must exist`);
-    // parseFrontmatter throws when name/description are missing or malformed.
-    const { description } = parseFrontmatter(read(rel));
-    assert.ok(
-      description.length < 200,
-      `${rel} description is ${description.length} chars; keep under 200`,
-    );
+    const { description } = parseFrontmatter(read(rel)); // throws when malformed
+    assert.ok(description.length < 200, `${rel} description is ${description.length} chars; keep under 200`);
   }
 });
 
 test("SKILL.md has name + description frontmatter", () => {
-  const { name, description } = parseFrontmatter(read("skills/git-flow/SKILL.md"));
+  const { name, description } = parseFrontmatter(read(SKILL_FILE));
   assert.equal(name, "git-flow");
-  assert.ok(
-    description.length < 250,
-    `SKILL.md description is ${description.length} chars; keep under 250`,
-  );
+  assert.ok(description.length < 250, `SKILL.md description is ${description.length} chars; keep under 250`);
 });
 
 test("frontmatter parses as valid YAML (host-rejectable constructs are rejected)", () => {
-  // Every manifest the host reads must parse under the strict validator; the
-  // lenient parser was removed precisely because it accepted frontmatter the
-  // host rejects and silently skips.
   for (const rel of ROOT_FILES) {
-    assert.doesNotThrow(
-      () => parseFrontmatter(read(rel)),
-      `${rel} has invalid YAML frontmatter`,
-    );
+    assert.doesNotThrow(() => parseFrontmatter(read(rel)), `${rel} has invalid YAML frontmatter`);
   }
 
-  // Regression guard: the exact construct that disabled the git-flow skill —
-  // an unquoted scalar containing a colon followed by a space.
+  // Regression guard: the construct that silently disabled the git-flow
+  // skill — an unquoted scalar containing a colon followed by a space.
   assert.throws(
     () => parseFrontmatter("---\nname: git-flow\ndescription: a workflow: b\n---\n"),
     /unquoted value contains ": "/,
     "an unquoted ': ' in a scalar must be rejected",
   );
-
-  // Quoting the same value is the documented fix and must pass.
   assert.doesNotThrow(
     () => parseFrontmatter('---\nname: git-flow\ndescription: "a workflow: b"\n---\n'),
     "a quoted scalar containing ': ' must be accepted",
   );
-
-  // A nested key containing a colon without a following space is valid YAML.
   assert.doesNotThrow(
-    () =>
-      parseFrontmatter(
-        "---\nname: x\ndescription: y\nmetadata:\n  kimi:origin: kimi-git-flow\n---\n",
-      ),
+    () => parseFrontmatter("---\nname: x\ndescription: y\nmetadata:\n  kimi:origin: kimi-git-flow\n---\n"),
     "a `kimi:origin` nested key must be accepted",
   );
-
-  // A missing required key must throw, not silently yield an empty object.
   assert.throws(
     () => parseFrontmatter("---\nname: x\n---\n"),
     /missing the required key `description`/,
@@ -337,17 +280,15 @@ test("frontmatter parses as valid YAML (host-rejectable constructs are rejected)
 test("every reference cross-link resolves to a file", () => {
   const linkRe = /[`(](references\/[\w-]+\.md)[`)]/g;
   for (const rel of ROOT_FILES) {
-    const md = read(rel);
     const fromDir = dirname(resolve(root, rel));
-    for (const m of md.matchAll(linkRe)) {
+    for (const m of read(rel).matchAll(linkRe)) {
       const target = m[1];
-      const abs = resolve(fromDir, target);
-      assert.ok(exists(abs), `${rel} references missing file: ${target} (looked at ${abs})`);
+      assert.ok(exists(resolve(fromDir, target)), `${rel} references missing file: ${target}`);
     }
   }
 });
 
-test("every reference file declared under skills/git-flow/references/ exists", () => {
+test("every reference file under skills/git-flow/references/ exists", () => {
   for (const rel of REFERENCE_FILES) {
     assert.ok(exists(rel), `${rel} must exist`);
   }
@@ -376,111 +317,87 @@ test("branch slug satisfies the documented invariants (branch-naming.md §Slug r
     "  Mixed CASE  and!!!punct  ",
   ]) {
     const s = slug(input);
-    assert.match(
-      s,
-      /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
-      `slug(${JSON.stringify(input)}) must be lowercase kebab-case: got ${s}`,
-    );
+    assert.match(s, /^[a-z0-9]+(?:-[a-z0-9]+)*$/, `slug must be lowercase kebab-case: ${JSON.stringify(input)} → ${s}`);
     assert.ok(s.length <= MAX_SLUG, `slug must be ≤${MAX_SLUG} chars: ${s}`);
   }
 
-  // Rule 3: cap at 48 by dropping WHOLE WORDS from the right — never truncate
-  // mid-word. The previous `.slice(0, 48)` violated the doc it cites.
+  // Rule 3: cap at 48 by dropping WHOLE WORDS from the right, never
+  // mid-word. A `.slice(0, 48)` would violate the doc it cites.
   const long = Array.from({ length: 40 }, () => "word").join(" ");
   const capped = slug(long);
   assert.ok(capped.length <= MAX_SLUG, `capped slug must be ≤${MAX_SLUG} chars: ${capped}`);
   assert.ok(!capped.endsWith("-"), `capped slug must not end with -: ${capped}`);
-  assert.ok(
-    long.replace(/\s+/g, "-").startsWith(capped),
-    "the cap must be a whole-word prefix of the kebab input, not a slice",
-  );
+  assert.ok(long.replace(/\s+/g, "-").startsWith(capped), "the cap must be a whole-word prefix, not a slice");
   assert.ok(!capped.endsWith("wor"), "the cap must not truncate mid-word");
 
-  // A single over-long token has no whole word that fits; the slug must still
-  // be non-empty and within the cap (an empty slug would render `fix/`).
-  const single = slug("x".repeat(80));
-  assert.equal(single.length, MAX_SLUG, "a single over-long token must hard-cut to the cap");
-  assert.ok(single.length > 0, "the slug must never be empty");
+  // A single over-long token has no whole word that fits; hard-cut to the cap.
+  assert.equal(slug("x".repeat(80)).length, MAX_SLUG, "a single over-long token must hard-cut to the cap");
 
-  // The deterministic rules, on inputs with no semantic ambiguity. The doc's
-  // noun-phrase examples depend on interpretation, so only the mechanical
-  // cases are pinned here.
-  assert.equal(slug("phase 2: rbac"), "phase-2-rbac");
-  assert.equal(slug("rename foo to bar"), "rename-foo-to-bar");
-  assert.equal(slug("foo   bar"), "foo-bar");
-  assert.equal(slug("foo!!!bar"), "foo-bar");
-  assert.equal(slug("foo___bar"), "foo-bar");
-  assert.equal(slug("foo bar "), "foo-bar");
+  // An input with no alphanumerics has no valid slug; refuse rather than
+  // emit an empty slug (`fix/`).
+  assert.throws(() => slug("!!!"), /no \[a-z0-9\]/, "a punctuation-only input must not yield an empty slug");
+  assert.throws(() => slug("   "), /no \[a-z0-9\]/, "a whitespace-only input must not yield an empty slug");
+
+  for (const [input, expected] of [
+    ["phase 2: rbac", "phase-2-rbac"],
+    ["rename foo to bar", "rename-foo-to-bar"],
+    ["foo   bar", "foo-bar"],
+    ["foo!!!bar", "foo-bar"],
+    ["foo___bar", "foo-bar"],
+    ["foo bar ", "foo-bar"],
+  ]) {
+    assert.equal(slug(input), expected, `slug(${JSON.stringify(input)})`);
+  }
 });
 
 test("command markdown has coherent numbered steps (no orphaned prose)", () => {
   for (const rel of COMMAND_FILES) {
-    const md = read(rel);
-    const section = md.split(/^## What this does$/m)[1]?.split(/^## /m)[0] ?? "";
-    const lines = section.split("\n");
+    const body = read(rel).split(/^## What this does$/m)[1]?.split(/^## /m)[0] ?? "";
     let prevNumber = 0;
     let sawFirst = false;
-    for (const line of lines) {
+    for (const line of body.split("\n")) {
       const m = line.match(/^(\d+)\.\s/);
-      if (m) {
-        const n = Number(m[1]);
-        assert.ok(
-          !sawFirst || n === prevNumber + 1,
-          `${rel}: numbered steps must be sequential in ## What this does (saw ${prevNumber} then ${n})`,
-        );
-        sawFirst = true;
-        prevNumber = n;
-      }
+      if (!m) continue;
+      const n = Number(m[1]);
+      assert.ok(
+        !sawFirst || n === prevNumber + 1,
+        `${rel}: numbered steps must be sequential in ## What this does (saw ${prevNumber} then ${n})`,
+      );
+      sawFirst = true;
+      prevNumber = n;
     }
   }
 });
 
 test("command markdown has no orphan prose blocks", () => {
   for (const rel of COMMAND_FILES) {
-    const md = read(rel);
-    const sections = md.split(/^## /m).slice(1);
-    for (const s of sections) {
-      const lines = s.split("\n");
-      const lastNonBlank = lines.findLast((l) => l.trim() !== "");
-      assert.ok(
-        lastNonBlank && lastNonBlank.length > 0,
-        `${rel}: section starting with "## ${s.split("\n")[0].trim()}" has no content`,
-      );
+    for (const s of read(rel).split(/^## /m).slice(1)) {
+      const lastNonBlank = s.split("\n").findLast((l) => l.trim() !== "");
+      assert.ok(lastNonBlank, `${rel}: section "## ${s.split("\n")[0].trim()}" has no content`);
     }
   }
 });
 
-test("lastAction enum in state.md, SKILL.md, status.md stays in sync", () => {
-  const tableCellRe = /^\|[^|]*`?(branched|committed|pr-opened|watched-green|merged|abandoned)`?(?=[^|]*\|)/gm;
-  const allowed = new Set([
-    "branched",
-    "committed",
-    "pr-opened",
-    "watched-green",
-    "merged",
-    "abandoned",
-  ]);
-  const files = [
-    "skills/git-flow/SKILL.md",
-    "skills/git-flow/references/state.md",
-    "commands/status.md",
-  ];
-  for (const rel of files) {
-    const md = read(rel);
-    const seen = new Set();
-    for (const m of md.matchAll(tableCellRe)) {
-      seen.add(m[1]);
-    }
-    for (const v of seen) {
-      assert.ok(allowed.has(v), `${rel} lists unknown lastAction value: ${v}`);
-    }
+test("the lastAction enum is defined once in state.md and every consuming doc agrees", () => {
+  // state.md owns the definition: the first column of its `lastAction` table.
+  const defined = [...firstCellTokens(section(read(STATE_FILE), "`lastAction` values"))].sort();
+  assert.deepEqual(defined, ALLOWED_ACTIONS, "state.md must define exactly the allowed action enum");
+
+  // SKILL.md renders the same enum as a (step → action) table. The action
+  // sits in the second cell, so match any cell in the row.
+  const rendered = [...tableTokens(section(read(SKILL_FILE), "State persistence"))].sort();
+  assert.deepEqual(rendered, ALLOWED_ACTIONS, "SKILL.md's State persistence table must list exactly the enum");
+
+  // status.md lists the values in prose (no table), so require each one.
+  const status = read("commands/status.md");
+  for (const action of ALLOWED_ACTIONS) {
+    assert.ok(status.includes(`\`${action}\``), `commands/status.md must list the \`${action}\` action`);
   }
 });
 
 test("state.md does not reintroduce 'pushed' as a separate lastAction value", () => {
-  const md = read("skills/git-flow/references/state.md");
-  const tableRow = md.split("\n").find((line) => /^\|\s*`?pushed`?\s*\|/.test(line));
-  assert.ok(!tableRow, "state.md must not list 'pushed' as a lastAction value in any table row");
+  const row = read(STATE_FILE).split("\n").find((line) => /^\|\s*`?pushed`?\s*\|/.test(line));
+  assert.ok(!row, "state.md must not list 'pushed' as a lastAction value in any table row");
 });
 
 test("dogfooded CI workflow is least-privilege and installs strictly from the lockfile", () => {
@@ -490,31 +407,14 @@ test("dogfooded CI workflow is least-privilege and installs strictly from the lo
     /^permissions:\r?\n[ \t]+contents:[ \t]*read[ \t]*\r?$/m,
     "CI must declare least-privilege `permissions: contents: read`",
   );
-  assert.match(
-    yml,
-    /uses:\s*actions\/checkout@v\d+\.\d+\.\d+/,
-    "actions/checkout must be pinned to a full @vX.Y.Z tag",
-  );
-  assert.match(
-    yml,
-    /uses:\s*actions\/setup-node@v\d+\.\d+\.\d+/,
-    "actions/setup-node must be pinned to a full @vX.Y.Z tag",
-  );
-  assert.match(
-    yml,
-    /^\s*-\s*run:\s*npm ci\s*$/m,
-    "CI must install strictly from the lockfile with a bare `npm ci`",
-  );
-  assert.doesNotMatch(
-    yml,
-    /^\s*-\s*run:.*\|\|/m,
-    "no CI step may fall back to `npm install` when `npm ci` fails",
-  );
+  assert.match(yml, /uses:\s*actions\/checkout@v\d+\.\d+\.\d+/, "actions/checkout must be pinned to a full @vX.Y.Z tag");
+  assert.match(yml, /uses:\s*actions\/setup-node@v\d+\.\d+\.\d+/, "actions/setup-node must be pinned to a full @vX.Y.Z tag");
+  assert.match(yml, /^\s*-\s*run:\s*npm ci\s*$/m, "CI must install strictly from the lockfile with a bare `npm ci`");
+  assert.doesNotMatch(yml, /^\s*-\s*run:.*\|\|/m, "no CI step may fall back to `npm install` when `npm ci` fails");
 });
 
 test("the generated CI templates are least-privilege too", () => {
-  const tmpl = read("skills/git-flow/references/setup-ci.md");
-  const templates = tmpl.match(/```yaml[\s\S]*?```/g) ?? [];
+  const templates = read("skills/git-flow/references/setup-ci.md").match(/```yaml[\s\S]*?```/g) ?? [];
   assert.ok(templates.length >= 4, "setup-ci.md must document the Node/Python/Rust/Go templates");
   for (const block of templates) {
     assert.match(
@@ -526,7 +426,7 @@ test("the generated CI templates are least-privilege too", () => {
 });
 
 test("SKILL.md quotes every default-branch expansion in step 0", () => {
-  const preflight = read("skills/git-flow/SKILL.md").split("### 1. Create the branch")[0];
+  const preflight = read(SKILL_FILE).split("### 1. Create the branch")[0];
   assert.ok(
     /"origin\/\$\{DEFAULT_BRANCH\}\.\.\$\{DEFAULT_BRANCH\}"/.test(preflight),
     "the divergence check must quote the ref expansion",
@@ -534,77 +434,42 @@ test("SKILL.md quotes every default-branch expansion in step 0", () => {
 });
 
 test("SKILL.md step 5 honors KIMI_GIT_FLOW_MERGE_STRATEGY instead of hardcoding --squash", () => {
-  const step5 = read("skills/git-flow/SKILL.md").split("### 5. Merge")[1].split("### 6.")[0];
-  assert.ok(
-    /KIMI_GIT_FLOW_MERGE_STRATEGY/.test(step5),
-    "step 5 must read KIMI_GIT_FLOW_MERGE_STRATEGY",
-  );
-  assert.ok(
-    /--rebase/.test(step5) && /--merge/.test(step5),
-    "step 5 must map the rebase and merge strategies",
-  );
+  const step5 = read(SKILL_FILE).split("### 5. Merge")[1].split("### 6.")[0];
+  assert.ok(/KIMI_GIT_FLOW_MERGE_STRATEGY/.test(step5), "step 5 must read KIMI_GIT_FLOW_MERGE_STRATEGY");
+  assert.ok(/--rebase/.test(step5) && /--merge/.test(step5), "step 5 must map the rebase and merge strategies");
   assert.ok(/"\$STRATEGY"/.test(step5), "step 5 must pass the strategy as a quoted variable");
 });
 
 test("watch.md and merge.md surface /kimi-git-flow:pr when no PR is open", () => {
-  const watch = read("commands/watch.md");
-  const merge = read("commands/merge.md");
-  assert.ok(
-    /\/kimi-git-flow:pr/.test(watch),
-    "commands/watch.md must mention /kimi-git-flow:pr as the recovery path when no PR is open",
-  );
-  assert.ok(
-    /\/kimi-git-flow:pr/.test(merge),
-    "commands/merge.md must mention /kimi-git-flow:pr as the recovery path when no PR is open",
-  );
-});
-
-test("branch, pr, and merge commands document a --dry-run flag", () => {
-  for (const rel of ["commands/branch.md", "commands/pr.md", "commands/merge.md"]) {
-    const md = read(rel);
+  for (const rel of ["commands/watch.md", "commands/merge.md"]) {
     assert.ok(
-      /--dry-run/.test(md),
-      `${rel} must document the --dry-run flag in its Usage section`,
+      /\/kimi-git-flow:pr/.test(read(rel)),
+      `${rel} must mention /kimi-git-flow:pr as the recovery path when no PR is open`,
     );
   }
 });
 
+test("branch, pr, and merge commands document a --dry-run flag", () => {
+  for (const rel of ["commands/branch.md", "commands/pr.md", "commands/merge.md"]) {
+    assert.ok(/--dry-run/.test(read(rel)), `${rel} must document the --dry-run flag in its Usage section`);
+  }
+});
+
 test("state.md is cross-linked from every command that reads workflow state", () => {
-  const consumers = [
-    "commands/status.md",
-    "commands/merge.md",
-  ];
-  for (const rel of consumers) {
-    const md = read(rel);
-    assert.ok(
-      references(md, "state.md"),
-      `${rel} reads workflow state but does not cross-link references/state.md`,
-    );
+  for (const rel of ["commands/status.md", "commands/merge.md"]) {
+    assert.ok(references(read(rel), "state.md"), `${rel} reads workflow state but does not cross-link references/state.md`);
   }
 });
 
 test("safety.md documents rule 11 (no silent revert) and rule 12 (no unpushed local commits on default branch)", () => {
   const md = read("skills/git-flow/references/safety.md");
-  assert.ok(
-    /11\.\s*\*\*No silent revert\.\*\*/.test(md),
-    "safety.md must document rule 11: No silent revert (forbids `git checkout --`, `git reset --hard`, `git stash drop`, `git clean -fd` without explicit user approval)",
-  );
+  assert.ok(/11\.\s*\*\*No silent revert\.\*\*/.test(md), "safety.md must document rule 11: No silent revert");
   assert.ok(
     /12\.\s*\*\*No branching off a default branch that has unpushed commits/.test(md),
     "safety.md must document rule 12: No branching off a default branch with unpushed commits",
   );
-  // Both rules must mention the exact verbs they forbid so the procedure
-  // can grep-guard against reintroduction.
-  for (const verb of [
-    "`git checkout -- <path>`",
-    "`git reset --hard`",
-    "`git stash drop`",
-    "`git clean -fd`",
-  ]) {
-    assert.ok(
-      md.includes(verb),
-      `safety.md rule 11 must explicitly name the forbidden command: ${verb}`,
-    );
+  for (const verb of ["`git checkout -- <path>`", "`git reset --hard`", "`git stash drop`", "`git clean -fd`"]) {
+    assert.ok(md.includes(verb), `safety.md rule 11 must explicitly name the forbidden command: ${verb}`);
   }
   assert.ok(
     /origin\/\${\s*DEFAULT_BRANCH\s*}|origin\/<default-branch>|origin\/<default>/.test(md),
@@ -613,39 +478,27 @@ test("safety.md documents rule 11 (no silent revert) and rule 12 (no unpushed lo
 });
 
 test("SKILL.md preflight refuses to proceed when local default branch has unpushed commits", () => {
-  const md = read("skills/git-flow/SKILL.md");
-  const preflight = md.split("### 1. Create the branch")[0];
+  const preflight = read(SKILL_FILE).split("### 1. Create the branch")[0];
   assert.ok(
     /origin\/\$\{DEFAULT_BRANCH\}\.\.\$\{DEFAULT_BRANCH\}/.test(preflight),
-    "SKILL.md preflight must include a git log check that uses ${DEFAULT_BRANCH} to compare local and origin default branches (no plain-text fallback)",
+    "SKILL.md preflight must compare local and origin default branches via ${DEFAULT_BRANCH}",
   );
+  assert.ok(/unpushed/.test(preflight) || /ahead of/.test(preflight), "SKILL.md preflight must call out unpushed/ahead commits as a stop condition");
+  assert.ok(/rule 12/.test(preflight), "SKILL.md preflight must cross-reference safety.md rule 12");
+  // The divergence check is meaningless without a local remote-tracking ref:
+  // `git log` exits 128 and the guard reads an empty string.
   assert.ok(
-    /unpushed/.test(preflight) || /ahead of/.test(preflight),
-    "SKILL.md preflight must call out unpushed/ahead commits as a stop condition",
-  );
-  assert.ok(
-    /rule 12/.test(preflight),
-    "SKILL.md preflight must cross-reference safety.md rule 12",
+    /rev-parse --verify --quiet "refs\/remotes\/origin\/\$DEFAULT_BRANCH"/.test(preflight),
+    "SKILL.md preflight must verify origin/<default-branch> exists before the divergence check",
   );
 });
 
 test("SKILL.md step 6 documents all three divergence-recovery options (rebase / merge / reset) with the reset safety gate", () => {
-  const md = read("skills/git-flow/SKILL.md");
-  const step6 = md.split("### 7. Loop")[0];
+  const step6 = read(SKILL_FILE).split("### 7. Loop")[0];
   for (const opt of ["--rebase", "--no-rebase", "reset --hard"]) {
-    assert.ok(
-      step6.includes(opt),
-      `SKILL.md step 6 must mention the '${opt}' divergence-recovery path`,
-    );
+    assert.ok(step6.includes(opt), `SKILL.md step 6 must mention the '${opt}' divergence-recovery path`);
   }
-  // The reset path must cross-reference rules 11 and 12 so the
-  // safety contract is enforced.
-  assert.ok(
-    /rule 11/.test(step6) && /rule 12/.test(step6),
-    "SKILL.md step 6's reset option must cross-reference safety.md rules 11 and 12",
-  );
-  // The reset safety gate (verify local-only commits are empty
-  // before discarding) must be spelled out.
+  assert.ok(/rule 11/.test(step6) && /rule 12/.test(step6), "SKILL.md step 6's reset option must cross-reference safety.md rules 11 and 12");
   assert.ok(
     /origin\/<default-branch>\.\.HEAD/.test(step6) && /HEAD\.\.origin\/<default-branch>/.test(step6),
     "SKILL.md step 6 must show the two git-log checks that gate the reset path",
@@ -653,12 +506,8 @@ test("SKILL.md step 6 documents all three divergence-recovery options (rebase / 
 });
 
 test("soft-rule 4 in safety.md gates `git reset --hard` on every local commit being reachable from origin", () => {
-  const md = read("skills/git-flow/references/safety.md");
-  const softRules = md.split("## Abort message format")[0];
-  assert.ok(
-    /`git pull --ff-only` fails after merge/.test(softRules),
-    "soft-rule 4 must still cover the `git pull --ff-only` failure case",
-  );
+  const softRules = read("skills/git-flow/references/safety.md").split("## Abort message format")[0];
+  assert.ok(/`git pull --ff-only` fails after merge/.test(softRules), "soft-rule 4 must still cover the `git pull --ff-only` failure case");
   assert.ok(
     /sanctioned.*only when.*every.*local.*commit.*reachable.*origin/i.test(softRules) ||
       /safe to `git reset --hard origin/.test(softRules),
@@ -667,138 +516,96 @@ test("soft-rule 4 in safety.md gates `git reset --hard` on every local commit be
 });
 
 test("language filter: commit messages, PR titles, and PR bodies stay free of blocked slang and jargon", () => {
-  // Load the blocklist straight out of the rule doc so adding a token
-  // to language.md automatically tightens every other site. Only
-  // `- `token`` list items count — prose backticks in the same section
-  // describe the whole-word rule (`[A-Za-z0-9_]`, `stuffy`, ...) and
-  // must not be mistaken for tokens.
-  const ruleDoc = read("skills/git-flow/references/language.md");
-  const blocklistSection = ruleDoc
+  // Load the blocklist straight out of the rule doc so adding a token there
+  // tightens every site. Only `- `token`` list items count — prose backticks
+  // in the same section describe the whole-word rule and are not tokens.
+  const blocklist = read("skills/git-flow/references/language.md")
     .split("## Blocklist")[1]
     .split("## How the workflow applies the rule")[0];
-  const tokens = Array.from(
-    blocklistSection.matchAll(/^- `([a-z][a-z-]*)`$/gm),
-    (m) => m[1],
-  );
+  const tokens = Array.from(blocklist.matchAll(/^- `([a-z][a-z-]*)`$/gm), (m) => m[1]);
   assert.ok(tokens.length > 0, "language.md must define at least one blocked token");
   assert.ok(
-    /### Casual filler/.test(blocklistSection) &&
-      /### Development slang and jargon/.test(blocklistSection),
+    /### Casual filler/.test(blocklist) && /### Development slang and jargon/.test(blocklist),
     "language.md blocklist must keep both the casual-filler and jargon lists",
   );
 
-  // The workflow writes strings from five sites. We extract the literal
-  // substrings that actually land in commits, PR titles, or PR bodies:
-  //   - commit subjects inside `git commit -m "..."` and quoted in prose
-  //   - PR titles inside `--title "..."` and the template's title rule
-  //   - PR body bullets inside the markdown fences in pr-template.md
+  // The strings that actually land in commits, PR titles, or PR bodies.
   const sites = [
     {
-      path: "skills/git-flow/SKILL.md",
       label: "SKILL.md commit + PR sections",
-      samples: extractQuotedStrings(read("skills/git-flow/SKILL.md")),
+      samples: extractQuotedStrings(read(SKILL_FILE)),
     },
     {
-      path: "skills/git-flow/references/branch-naming.md",
       label: "branch-naming.md conventional-commit section",
-      samples: extractQuotedStrings(
-        read("skills/git-flow/references/branch-naming.md"),
-      ).concat(
-        extractBacktickSamples(
-          read("skills/git-flow/references/branch-naming.md"),
-        ),
-      ),
+      samples: [
+        ...extractQuotedStrings(read("skills/git-flow/references/branch-naming.md")),
+        ...extractBacktickSamples(read("skills/git-flow/references/branch-naming.md")),
+      ],
     },
     {
-      path: "skills/git-flow/references/pr-template.md",
       label: "pr-template.md body markdown",
-      samples: extractMarkdownBodyBullets(
-        read("skills/git-flow/references/pr-template.md"),
-      ).concat(
-        extractBacktickSamples(read("skills/git-flow/references/pr-template.md")),
-      ),
+      samples: [
+        ...extractMarkdownBodyBullets(read("skills/git-flow/references/pr-template.md")),
+        ...extractBacktickSamples(read("skills/git-flow/references/pr-template.md")),
+      ],
     },
     {
-      path: "skills/git-flow/references/setup-ci.md",
       label: "setup-ci.md scaffold commit + PR title",
       samples: extractQuotedStrings(read("skills/git-flow/references/setup-ci.md")),
     },
     {
-      path: "commands/setup-ci.md",
       label: "commands/setup-ci.md commit subject",
       samples: extractQuotedStrings(read("commands/setup-ci.md")),
     },
   ];
 
-  for (const site of sites) {
-    for (const token of tokens) {
-      const re = new RegExp(`(?<![A-Za-z0-9_])${token}(?![A-Za-z0-9_])`, "i");
+  for (const token of tokens) {
+    // A token is interpolated into a RegExp below. Constrain its shape so a
+    // metacharacter can never reach the pattern builder as a syntax error.
+    assert.match(token, /^[a-z][a-z-]*$/, `blocked token must be a plain lowercase word: ${JSON.stringify(token)}`);
+    const re = new RegExp(`(?<![A-Za-z0-9_])${escapeRegExp(token)}(?![A-Za-z0-9_])`, "i");
+    for (const site of sites) {
       for (const sample of site.samples) {
-        assert.ok(
-          !re.test(sample),
-          `${site.label} contains blocked token "${token}" in: ${JSON.stringify(sample)}`,
-        );
+        assert.ok(!re.test(sample), `${site.label} contains blocked token "${token}" in: ${JSON.stringify(sample)}`);
       }
     }
   }
 });
 
 test("step 4 uses the local check as the merge gate when Actions is unavailable", () => {
-  const NOTICE =
-    "no remote CI: Actions is unavailable for this repository; local check result was";
-
-  for (const rel of [
-    "skills/git-flow/references/ci-watch.md",
-    "skills/git-flow/SKILL.md",
-  ]) {
+  const NOTICE = "no remote CI: Actions is unavailable for this repository; local check result was";
+  for (const rel of ["skills/git-flow/references/ci-watch.md", SKILL_FILE]) {
     const md = read(rel);
-    assert.ok(
-      md.includes("actions/permissions"),
-      `${rel} must detect Actions availability via repos/{owner}/{repo}/actions/permissions`,
-    );
-    assert.ok(
-      md.includes(NOTICE),
-      `${rel} must print the Actions-unavailable notice carrying the local check result`,
-    );
-    assert.ok(
-      /step 2\.5/.test(md),
-      `${rel} must name the step 2.5 local check as the merge gate`,
-    );
+    assert.ok(md.includes("actions/permissions"), `${rel} must detect Actions availability via repos/{owner}/{repo}/actions/permissions`);
+    assert.ok(md.includes(NOTICE), `${rel} must print the Actions-unavailable notice carrying the local check result`);
+    assert.ok(/step 2\.5/.test(md), `${rel} must name the step 2.5 local check as the merge gate`);
   }
-
-  const ciWatch = read("skills/git-flow/references/ci-watch.md");
   assert.ok(
-    /Do \*\*not\*\* run `gh pr checks --watch`/.test(ciWatch),
+    /Do \*\*not\*\* run `gh pr checks --watch`/.test(read("skills/git-flow/references/ci-watch.md")),
     "ci-watch.md must forbid the watch when Actions is unavailable",
   );
 });
 
-// Pull every `"..."` string out of a markdown file. These are the
-// strings the agent will pass to `git commit -m` or `--title`.
+// Pull every `"..."` string out of a markdown file — the strings the agent
+// passes to `git commit -m` or `--title`.
 function extractQuotedStrings(md) {
   return Array.from(md.matchAll(/"([^"\n]+)"/g), (m) => m[1]);
 }
 
-// Pull every `` `...` `` string. Catches the conventional-commit
-// subject samples in branch-naming.md and the squash title example
-// in pr-template.md.
+// Pull every `` `...` `` string — the conventional-commit samples and squash
+// title examples the docs present as literal text.
 function extractBacktickSamples(md) {
   return Array.from(md.matchAll(/`([^`\n]+)`/g), (m) => m[1]);
 }
 
-// Pull every "- ..." bullet inside ```markdown fences. These are the
-// exact lines the workflow hands to `gh pr create --body-file`.
+// Pull every non-heading line inside ```markdown fences — the exact lines the
+// workflow hands to `gh pr create --body-file`.
 function extractMarkdownBodyBullets(md) {
   const out = [];
-  const fenceRe = /```markdown\n([\s\S]*?)```/g;
-  let m;
-  while ((m = fenceRe.exec(md))) {
-    for (const line of m[1].split("\n")) {
-      const bullet = line.match(/^- (.+)$/);
-      if (bullet) out.push(bullet[1]);
-      else if (line.trim().length > 0 && !line.trimStart().startsWith("#")) {
-        out.push(line.trim());
-      }
+  for (const [, body] of md.matchAll(/```markdown\n([\s\S]*?)```/g)) {
+    for (const line of body.split("\n")) {
+      if (!line.trim() || line.trimStart().startsWith("#")) continue;
+      out.push(line.replace(/^- /, "").trim());
     }
   }
   return out;
