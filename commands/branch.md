@@ -28,8 +28,9 @@ audit what the procedure will do without creating a branch.
 2. Resolve the branch name per
    `skills/git-flow/references/branch-naming.md`. Cap the slug at 48
    chars. Append `-2`, `-3`, ... on collision.
-3. `git fetch origin <default-branch>`.
-4. `git checkout -b <branch> origin/<default-branch>`.
+3. `git fetch origin "<default-branch>"`. Quote the ref: a branch name is
+   remote-controlled and may contain shell metacharacters.
+4. `git checkout -b "<branch>" "origin/<default-branch>"`.
 5. Print the resolved branch name and stop. **Do not commit, push, or
    open a PR** — that's the user's next step.
 

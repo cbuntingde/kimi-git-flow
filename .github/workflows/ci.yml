@@ -10,6 +10,10 @@ name: ci
 # instead of `v4.2.2`. That is the GitHub-recommended practice; we
 # trade a bit of that for readability of this small workflow.
 
+# Least privilege: the test job only reads the repository.
+permissions:
+  contents: read
+
 on:
   pull_request:
   push:
@@ -23,5 +27,9 @@ jobs:
       - uses: actions/setup-node@v4.1.0
         with:
           node-version: ${{ vars.NODE_VERSION || '20' }}
-      - run: npm ci || npm install
+      # Install strictly from the committed lockfile. The previous
+      # `npm ci || npm install` silently fell back to an unpinned install
+      # whenever the lockfile was missing or out of sync — which it always
+      # was, because no package-lock.json had been committed. Fail loudly.
+      - run: npm ci
       - run: npm test

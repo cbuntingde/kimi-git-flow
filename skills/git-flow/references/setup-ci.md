@@ -42,6 +42,9 @@ otherwise pins to Node 20 (matching `package.json` engines `>=20`):
 ```yaml
 name: ci
 
+permissions:
+  contents: read
+
 on:
   pull_request:
   push:
@@ -67,6 +70,9 @@ The `cache: 'npm'` line is safe — it only activates when
 
 ```yaml
 name: ci
+
+permissions:
+  contents: read
 
 on:
   pull_request:
@@ -116,6 +122,9 @@ without editing the YAML. A few scope notes that bite users:
 ```yaml
 name: ci
 
+permissions:
+  contents: read
+
 on:
   pull_request:
   push:
@@ -137,6 +146,9 @@ No `Swatinem/rust-cache` — we don't pretend to know the user's
 
 ```yaml
 name: ci
+
+permissions:
+  contents: read
 
 on:
   pull_request:
@@ -180,7 +192,7 @@ the user. If the user is silent, the workflow waits.
 On approval:
 
 ```bash
-git checkout -b <branch> origin/<default-branch>
+git checkout -b "<branch>" "origin/<default-branch>"
 
 # Write the file. Use Write, not `cat >`, to keep edits auditable.
 # .github/workflows/ci.yml

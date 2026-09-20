@@ -6,6 +6,31 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **CI installed unpinned packages and had no least-privilege token.** A
+  `package-lock.json` was never committed, so `npm ci || npm install` always
+  fell through to an unpinned `npm install` — and the smoke guard passed on the
+  substring. The workflow now runs a bare `npm ci` against a committed
+  lockfile, declares `permissions: contents: read`, and the `setup-ci`
+  templates gain the same `permissions` block.
+
+### Fixed
+
+- **Step 0 quotes its ref expansions.** Hygiene rather than a security fix:
+  git already rejects refnames containing whitespace or glob characters, and a
+  shell variable's contents are never re-expanded, so no live injection path
+  existed. The quoting is kept as defense in depth.
+- **`slug()` violated the documented cap rule.** The test harness truncated at
+  48 chars mid-word (`.slice(0, 48)`) and asserted `!startsWith("kimi")`,
+  neither of which is in `references/branch-naming.md`. It now drops whole
+  words and asserts only the documented invariants. A duplicate lenient
+  frontmatter parser was also removed; the strict parser is the single
+  contract.
+- **Documented env vars were no-ops.** `KIMI_GIT_FLOW_MERGE_STRATEGY` and
+  `KIMI_GIT_FLOW_BASE_BRANCH` were documented but never read; step 5 now maps
+  the strategy and step 0 honors the base-branch override.
+
 ### Added
 
 - `references/safety.md` rule 11 (no silent revert): the workflow must
