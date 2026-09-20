@@ -44,26 +44,55 @@ Run these steps in order. **Stop on any safety failure** (see
 
 ### 0. Preflight
 
+Every check aborts the run. Run them in order; do not continue past a
+failure.
+
 ```bash
-# Confirm we are in a git repo.
-git rev-parse --is-inside-work-tree
+# 0a. Must be inside a git working tree.
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "aborted: not a git repository. cd into the repository and retry."
+  exit 1
+fi
 
-# Confirm gh is authenticated.
-gh auth status
+# 0b. gh must be authenticated for the target host.
+if ! gh auth status >/dev/null 2>&1; then
+  echo "aborted: gh not authenticated. Run \`gh auth login\` and retry."
+  exit 1
+fi
 
-# Confirm the working tree is clean.
-test -z "$(git status --porcelain)"
+# 0c. The working tree must be clean.
+if [ -n "$(git status --porcelain)" ]; then
+  echo "aborted: dirty working tree. Commit or stash your changes before starting a new branch."
+  exit 1
+fi
 
-# Detect the default branch (do NOT assume "main"). KIMI_GIT_FLOW_BASE_BRANCH
-# overrides detection.
-DEFAULT_BRANCH="${KIMI_GIT_FLOW_BASE_BRANCH:-$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)}"
+# 0d. Detect the default branch (do NOT assume "main"). KIMI_GIT_FLOW_BASE_BRANCH
+# overrides detection. An empty value must abort here — it would make every
+# later ref expansion (`origin/`) meaningless.
+DEFAULT_BRANCH="${KIMI_GIT_FLOW_BASE_BRANCH:-$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null || true)}"
+if [ -z "$DEFAULT_BRANCH" ]; then
+  echo "aborted: could not determine the default branch. Set KIMI_GIT_FLOW_BASE_BRANCH and retry."
+  exit 1
+fi
 
-# Confirm local default branch is in sync with origin. Refuse to
-# proceed if there are unpushed local commits — see rule 12 in
-# `references/safety.md`. This gate prevents the agent from
-# stashing or resetting the user's unmerged work to "make the
-# build green." The ref is quoted for hygiene: git already rejects
-# refnames with whitespace or glob characters, and a shell variable's
+# 0e. Fetch, then confirm the remote-tracking ref exists. Without a local
+# `origin/<default-branch>`, the divergence check below runs `git log` against
+# a missing revision, which exits 128 with empty output — the guard would read
+# an empty string and silently pass, defeating the rule 12 check entirely.
+if ! git fetch origin "$DEFAULT_BRANCH"; then
+  echo "aborted: could not fetch origin/$DEFAULT_BRANCH."
+  exit 1
+fi
+if ! git rev-parse --verify --quiet "refs/remotes/origin/$DEFAULT_BRANCH" >/dev/null; then
+  echo "aborted: origin/$DEFAULT_BRANCH is not a known remote-tracking ref after fetch."
+  exit 1
+fi
+
+# 0f. Confirm local default branch is in sync with origin. Refuse to proceed if
+# there are unpushed local commits — see rule 12 in `references/safety.md`. This
+# gate prevents the agent from "rescuing" the user's unmerged work by stashing
+# it, resetting it, or branching off it. The ref is quoted for hygiene: git
+# rejects refnames with whitespace or glob characters, and a shell variable's
 # contents are never re-expanded, so this is not an injection barrier.
 unpushed=$(git log --oneline "origin/${DEFAULT_BRANCH}..${DEFAULT_BRANCH}")
 if [ -n "$unpushed" ]; then
@@ -74,14 +103,13 @@ if [ -n "$unpushed" ]; then
 fi
 ```
 
-If any of these fail, abort with a clear message. For a dirty
-working tree, offer `git stash` or "commit your existing changes
-first" and wait for the user. For unpushed local commits on the
-default branch, the preflight prints the exact commit list (so
-the user can decide whether the work is worth keeping) and the
-reconciliation commands (`git push origin <default>`,
-`git rebase origin/<default>`, or `git reset --hard origin/<default>`)
-and stops — the agent does not pick one on the user's behalf.
+For a dirty working tree, offer `git stash` or "commit your existing
+changes first" and wait for the user. For unpushed local commits on the
+default branch, the preflight prints the exact commit list (so the user
+can decide whether the work is worth keeping) and the reconciliation
+commands (`git push origin <default>`, `git rebase origin/<default>`, or
+`git reset --hard origin/<default>`) and stops — the agent does not pick
+one on the user's behalf.
 
 ### 1. Create the branch
 
@@ -102,7 +130,7 @@ Examples: `feature/my-change`, `fix/login-redirect`,
 `refactor/error-types`.
 
 ```bash
-git fetch origin "$DEFAULT_BRANCH"
+# Preflight (0e) already fetched origin/$DEFAULT_BRANCH.
 git checkout -b "<branch>" "origin/$DEFAULT_BRANCH"
 ```
 
@@ -222,12 +250,17 @@ See `references/ci-watch.md` for the full semantics (what counts as
 ### 5. Merge
 
 ```bash
-# Read the documented strategy override. Hardcoding --squash made
-# KIMI_GIT_FLOW_MERGE_STRATEGY a documented no-op.
+# Read the documented strategy override. An unrecognized value aborts rather
+# than falling through to squash — a typo must not pick a strategy the user
+# did not ask for.
 case "${KIMI_GIT_FLOW_MERGE_STRATEGY:-squash}" in
+  squash) STRATEGY=--squash ;;
   rebase) STRATEGY=--rebase ;;
   merge)  STRATEGY=--merge  ;;
-  *)      STRATEGY=--squash ;;
+  *)
+    echo "aborted: KIMI_GIT_FLOW_MERGE_STRATEGY must be squash, rebase, or merge (got '${KIMI_GIT_FLOW_MERGE_STRATEGY}')."
+    exit 1
+    ;;
 esac
 
 if [ "${KIMI_GIT_FLOW_DELETE_REMOTE_BRANCH:-0}" = "1" ]; then

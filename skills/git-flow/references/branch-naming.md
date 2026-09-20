@@ -27,6 +27,9 @@ not from the slug:
 3. **Cap at 48 characters.** Beyond that, drop whole words from the right
    until it fits. Never truncate mid-word.
 4. **No trailing dash.** Trim trailing `-`.
+5. **Never empty.** If normalization yields an empty slug — the request
+   contained no `[a-z0-9]` characters at all — stop and ask the user for a
+   name. Never create a `<type>/` branch whose slug is missing.
 
 ## Computing the slug from the user's request
 

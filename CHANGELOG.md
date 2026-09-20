@@ -13,6 +13,27 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `npm test`. The flag now precedes the path, and a guard asserts the ordering
   and that the pattern matches at least one test name.
 
+- **The smoke test's `lastAction` enum check never inspected `SKILL.md` or
+  `status.md`.** The regex anchored each value to the first table cell, so only
+  `state.md` was covered — and deleting a required value still passed, because
+  the check only rejected unknown values. `state.md` now defines the enum and
+  every consuming doc must agree with it. The command and reference manifests
+  are derived from disk instead of hand-maintained, so a newly added file can
+  no longer escape the structural checks. `slug()` refuses to return an empty
+  slug, and the language-filter token is shape-checked and escaped before it
+  reaches a `RegExp`.
+
+### Security
+
+- **Preflight could silently skip the unpushed-commits guard.** When the
+  remote-tracking ref did not exist yet, `git log` exited 128 with empty output
+  and the guard read an empty string, passing — defeating safety rule 12 on a
+  fresh clone. Preflight now fetches and verifies `origin/<default-branch>`
+  before the check, aborts on an empty detected default branch, and aborts
+  explicitly on each failed check instead of relying on exit statuses nobody
+  reads. An unrecognized `KIMI_GIT_FLOW_MERGE_STRATEGY` now aborts rather than
+  silently falling back to squash.
+
 ## [0.3.0] — 2026-09-19
 
 ### Security
