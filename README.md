@@ -1,7 +1,7 @@
 # kimi-git-flow
 
 ![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)
-![Version](https://img.shields.io/badge/version-0.2.0-blue)
+![Version](https://img.shields.io/badge/version-0.3.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Kimi_Code-7e57c2)
 ![GitHub](https://img.shields.io/badge/github-cbuntingde%2Fkimi--git--flow-181717?logo=github)
 
