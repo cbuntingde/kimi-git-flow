@@ -6,6 +6,8 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-09-19
+
 ### Security
 
 - **CI installed unpinned packages and had no least-privilege token.** A
