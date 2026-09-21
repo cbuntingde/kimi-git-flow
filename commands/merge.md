@@ -5,7 +5,7 @@ description: Merge the current branch's PR with the configured strategy and retu
 
 # /kimi-git-flow:merge
 
-Run steps 5 and 6 of the kimi-git-flow procedure: merge the PR and
+Run steps 5, 6 and 7 of the kimi-git-flow procedure: merge the PR and
 return to the default branch. Assumes the PR is already open and CI is
 green (or the user has explicitly waived CI).
 
@@ -66,8 +66,15 @@ before actually merging.
    wait), surface the divergence and stop — user decides how to
    reconcile.
 7. `git branch -d <branch>` to tidy the local copy (always runs,
-   regardless of `--delete-branch`).
-8. Print one of:
+   regardless of `--delete-branch`). Do not silence this with
+   `|| true`: `-d` refuses to delete an unmerged branch, and that
+   refusal is the only signal the merge did not land. If it refuses,
+   stop and report — never substitute `-D`.
+8. Confirm nothing was left behind (step 7 of the procedure): clean
+   `git status --porcelain`, no branch but the default, the default not
+   ahead of `origin`, nothing stashed. See
+   `skills/git-flow/references/no-leftovers.md`.
+9. Print one of:
    - `merged <branch> → <default-branch> via PR #<n> (remote branch kept)`
    - `merged <branch> → <default-branch> via PR #<n> (remote branch deleted)`
    and stop.
@@ -97,5 +104,7 @@ See `skills/git-flow/references/safety.md` for the full rule set.
 - `/kimi-git-flow:watch` — confirm CI is green before merging.
 - `skills/git-flow/references/merge-strategy.md` — squash vs. rebase
   vs. merge.
+- `skills/git-flow/references/no-leftovers.md` — the step 7 check this
+  command runs before reporting success.
 - `skills/git-flow/references/state.md` — schema for the
   `.git/kimi-git-flow/state.json` file this command writes.

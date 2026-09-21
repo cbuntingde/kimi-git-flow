@@ -28,7 +28,10 @@ branch is left intact.
    (capital `-D` because the branch may have unmerged commits — that's
    the point of this command).
 5. If `--delete-remote` was passed: `git push origin --delete <branch>`.
-6. Print `abandoned <branch>; returned to <default-branch>` and stop.
+6. Confirm nothing was left behind (step 7 of the procedure): a clean
+   `git status --porcelain`, no branch but the default, nothing stashed.
+   See `skills/git-flow/references/no-leftovers.md`.
+7. Print `abandoned <branch>; returned to <default-branch>` and stop.
 
 ## When not to use
 
@@ -46,9 +49,14 @@ branch is left intact.
   ahead of the default branch **unless** the user has explicitly typed
   `--delete-remote` (typing it is the explicit approval).
 - Does not modify any commits. Just deletes the ref.
+- Abandoning is the user's decision, never the agent's. This command is
+  the one place unmerged work is thrown away, and it exists so that
+  discarding a branch is done on purpose rather than as cleanup.
 
 ## See also
 
 - `/kimi-git-flow:merge` — if the branch is worth keeping.
+- `skills/git-flow/references/no-leftovers.md` — one branch at a time,
+  and what a finished run has to look like.
 - `skills/git-flow/references/safety.md` — hard rules (no `--force`, no
   skipping).

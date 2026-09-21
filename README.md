@@ -31,6 +31,11 @@ checks to pass, and lands the change for you.
 - **Remote branches kept by default.** After a change lands, its branch
   stays on GitHub so you can revisit, audit, or point someone at the
   exact line of work it came from.
+- **One branch at a time, and nothing left behind.** A change runs from
+  creation all the way to landed before the next one starts; the plugin
+  refuses to begin while another branch or review request is still open.
+  Every run ends by confirming that no branch, no unlanded commit and no
+  uncommitted file was left over — including when the run stopped early.
 
 ## Install
 
@@ -106,8 +111,16 @@ All settings are optional. The defaults work for most repositories.
 ## Limitations
 
 - **One change at a time.** The plugin handles a single change end to
-  end before starting the next. If you ask for several changes, they
-  run one after another.
+  end before starting the next. If you ask for several changes, they run
+  one after another — and if a branch or review request is already open,
+  the workflow stops and names it rather than starting a second one. A
+  branch you manage by hand counts too: it is reported, never deleted
+  behind your back.
+- **An interrupted run leaves a branch, on purpose.** If a session ends
+  or a local check fails partway through, the branch is pushed with its
+  work committed so nothing exists only on your disk. It stays open
+  until it is landed or you abandon it with
+  `/kimi-git-flow:back-to-main`.
 - **No background hooks.** The plugin only runs when you invoke it or
   when Kimi uses it on your behalf.
 

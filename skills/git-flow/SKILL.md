@@ -1,6 +1,6 @@
 ---
 name: git-flow
-description: "Branch-per-change GitHub workflow: fresh branch → commit → local check → push → PR → wait for CI → merge → return to default. Drives `gh` and `git` via Bash."
+description: "Branch-per-change GitHub workflow: fresh branch → commit → local check → push → PR → wait for CI → merge → return to default. One branch at a time; nothing left behind. Drives `gh` and `git` via Bash."
 license: Apache-2.0
 compatibility: Requires git and gh (GitHub CLI) on PATH, with `gh auth status` succeeding for the target repo's host. Targets Kimi Code CLI >= 1.0.
 metadata:
@@ -14,6 +14,12 @@ You are operating the standard GitHub branch-and-PR workflow on behalf of
 the user. One fresh branch per phase, per task, or per general code change.
 You commit, push, open a PR, wait for CI, merge, and return the working
 copy to the default branch. Never co-mingle unrelated changes.
+
+**One branch at a time, and it runs to merged before the next one
+starts.** Nothing is left behind — not a branch, not a commit that is
+only local, not an uncommitted file. Preflight step 0g refuses to start
+while another branch or pull request is open, and step 7 checks that
+nothing was left behind. The contract is `references/no-leftovers.md`.
 
 ## When to use this skill
 
@@ -101,6 +107,23 @@ if [ -n "$unpushed" ]; then
   echo "aborted: local ${DEFAULT_BRANCH} is ahead of origin/${DEFAULT_BRANCH}. Push, rebase, or drop them before starting a new branch."
   exit 1
 fi
+
+# 0g. No other branch may be open. One branch at a time: a branch this
+# workflow creates runs to merged before the next one starts. The full
+# contract is in `references/no-leftovers.md`.
+other_branches=$(git for-each-ref --format='%(refname:short)' refs/heads/ | grep -vx "$DEFAULT_BRANCH")
+if [ -n "$other_branches" ]; then
+  echo "aborted: a branch is already open. Finish or abandon it before starting another:"
+  echo "$other_branches"
+  exit 1
+fi
+
+open_prs=$(gh pr list --state open --json number,headRefName -q '.[] | "#\(.number) \(.headRefName)"')
+if [ -n "$open_prs" ]; then
+  echo "aborted: a pull request is already open. Finish it before starting another branch:"
+  echo "$open_prs"
+  exit 1
+fi
 ```
 
 For a dirty working tree, offer `git stash` or "commit your existing
@@ -110,6 +133,12 @@ can decide whether the work is worth keeping) and the reconciliation
 commands (`git push origin <default>`, `git rebase origin/<default>`, or
 `git reset --hard origin/<default>`) and stops — the agent does not pick
 one on the user's behalf.
+
+For an already-open branch or pull request (0g), the preflight prints
+what it found and stops. The next step is finishing that work, not
+starting a second branch beside it. A branch the user manages by hand
+fires this check too: name it and let them decide, rather than deleting
+something this workflow did not create. See `references/no-leftovers.md`.
 
 ### 1. Create the branch
 
@@ -175,6 +204,14 @@ This step fires even when remote CI is configured. Remote CI is the
 source of truth for merge gating; the local check is a fast pre-push
 sanity check so obvious failures don't reach the PR.
 
+**On any abort after the commit, push the branch before stopping.** A
+failed local check, a failed `gh pr create`, a question only the user
+can answer — the commit already exists, so it must also exist on
+`origin`. An unpushed branch is work that lives in exactly one place,
+and it is indistinguishable from work that was never done. Push with
+`git push -u origin <branch>` first, then print the abort. See
+`references/no-leftovers.md`.
+
 ### 3. Push and open the PR
 
 ```bash
@@ -194,6 +231,11 @@ Both the PR title (which becomes the squash-commit subject on merge)
 and every line of the rendered PR body must pass the language
 filter in `references/language.md` before `gh pr create` fires. A
 blocked token aborts the step before the PR is opened.
+
+If `gh pr create` fails, the push on the line above has already
+succeeded — report that the branch is on `origin` with no pull request,
+and the exact `gh` error. That is a resumable state, not a lost one, and
+`/kimi-git-flow:pr` picks it up.
 
 ### 4. Wait for CI to go green
 
@@ -291,8 +333,18 @@ git pull --ff-only
 
 # Always tidy the local copy — the remote branch is kept unless
 # KIMI_GIT_FLOW_DELETE_REMOTE_BRANCH=1 was set (handled in step 5).
-git branch -d <branch> 2>/dev/null || true
+#
+# Do NOT silence this with `|| true`. `-d` refuses to delete a branch
+# that is not fully merged, and that refusal is the only signal that
+# step 5 did not actually land. A silenced failure leaves the branch in
+# place and reports success, which is the worst of both.
+git branch -d <branch>
 ```
+
+If `git branch -d` refuses, **stop and report it.** The branch is not
+merged, so step 5 did not land it — check the pull request state before
+doing anything else. Do not reach for `-D`, which deletes a branch
+whether or not its work is merged.
 
 If the user's local branch and remote branch are out of sync after the
 merge (e.g. another merge landed during the CI wait), `git pull --ff-only`
@@ -330,10 +382,29 @@ The workflow prints the exact diagnostic and all three options, then
 stops. The user runs the chosen option's command themselves; the
 agent does not pick on the user's behalf.
 
-### 7. Loop
+### 7. Nothing left behind
+
+Run this at the end of every workflow run, **success or abort**, and put
+the result in the summary. It is the check that closes the loop opened
+by step 0g.
+
+```bash
+git status --porcelain                  # must print nothing
+git branch                              # must list the default branch and nothing else
+git log --oneline origin/main..main     # must print nothing — the default branch is not ahead
+git stash list                          # must print nothing
+```
+
+Any output is a stop, not a warning. The full contract, including why
+the branch delete in step 6 is no longer silenced, is in
+`references/no-leftovers.md`.
+
+### 8. Loop
 
 Return to step 0 for the next phase / task / change. **One branch per
-change.** Never reuse a branch for an unrelated edit.
+change, and it finishes before the next one starts.** Never reuse a
+branch for an unrelated edit, and never start a second branch while the
+first is open — step 0g refuses.
 
 ## Slash command mapping
 
@@ -342,10 +413,10 @@ change.** Never reuse a branch for an unrelated edit.
 | `/kimi-git-flow:branch <slug>` | 0, 1 |
 | `/kimi-git-flow:pr` | 3 |
 | `/kimi-git-flow:watch` | 4 |
-| `/kimi-git-flow:merge` | 5, 6 |
-| `/kimi-git-flow:status` | read-only — print current branch, PR URL, check states |
+| `/kimi-git-flow:merge` | 5, 6, 7 |
+| `/kimi-git-flow:status` | read-only — print current branch, PR URL, check states, and any leftover branch |
 | `/kimi-git-flow:back-to-main` | 6 only (no merge; abandons current branch) |
-| `/kimi-git-flow:setup-ci` | one-shot bootstrapper — drafts `.github/workflows/ci.yml`, requires user approval, opens a PR. Outside the 0→7 procedure. |
+| `/kimi-git-flow:setup-ci` | one-shot bootstrapper — drafts `.github/workflows/ci.yml`, requires user approval, opens a PR. Outside the 0→8 procedure. |
 
 The slash commands are escape hatches — the natural-language workflow is
 the default entry point. Read each command's body for exact behavior.
@@ -409,5 +480,7 @@ user should take. Do not print a wall of debug output.
 - `references/setup-ci.md` — `/kimi-git-flow:setup-ci` scaffold logic.
 - `references/merge-strategy.md` — squash vs. rebase vs. merge.
 - `references/safety.md` — hard rules and abort conditions.
+- `references/no-leftovers.md` — one branch at a time: the ordering
+  rule, the preflight that enforces it, and the end-of-run check.
 - `references/language.md` — slang and jargon blocklist for commit
   messages, PR titles, and PR bodies.

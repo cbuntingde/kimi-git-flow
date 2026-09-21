@@ -6,7 +6,56 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **One branch at a time, and nothing left behind.** The procedure
+  gains a rule it previously only implied. A branch created by the
+  workflow runs from creation to merged before the next one starts, and
+  that is now enforced at both ends of the run rather than left to the
+  agent's judgement:
+
+  - **Preflight step 0g** refuses to start while any local branch other
+    than the default exists, or while any pull request is open. It names
+    what it found and stops. A branch the user manages by hand fires the
+    check too — it is reported, never deleted.
+  - **Step 7** runs at the end of every run, success or abort, and
+    requires `git status --porcelain`, `git branch`,
+    `git log origin/<default>..<default>` and `git stash list` to all
+    print nothing.
+
+  The contract is `references/no-leftovers.md`, cross-linked from
+  `SKILL.md`, `safety.md` rule 13, and the four commands that can leave a
+  branch open.
+
+- **`/kimi-git-flow:status` reports leftovers.** A new output line lists
+  every local branch other than the default and every open pull request,
+  or `none` when both are empty — the same condition step 0g refuses on,
+  visible without starting a run.
+
 ### Fixed
+
+- **Step 6 hid a failed merge.** `git branch -d <branch> 2>/dev/null ||
+  true` discarded the one signal that step 5 never landed: `-d` refuses
+  to delete a branch that is not fully merged. The refusal is now
+  reported and the run stops, so an unmerged branch cannot be silently
+  left behind while the workflow reports success. `-D` is explicitly
+  forbidden as a substitute.
+
+- **An abort after the commit left the work only on local disk.** A
+  failed step 2.5, or a `gh pr create` that errored, ended the run with a
+  commit that existed in exactly one place and no pull request — work
+  indistinguishable from work that was never done. Step 2.5 and step 3
+  now push the branch before handing control back, and step 3 reports a
+  pushed branch with no PR as a resumable state rather than a failure.
+
+### Changed
+
+- **`skillInstructions` states the rule.** The host-injected summary now
+  carries "never start a second branch while one is open or unmerged: one
+  branch runs creation to merge, and nothing is left behind". The string
+  was tightened elsewhere to pay for it and stays inside the host's
+  1200-character budget, with the smoke test asserting the new rule and
+  the remaining headroom.
 
 - **A Bun project silently ran `npm test` instead of its own `verify`
   gate.** The step 2.5 detection matrix had no Bun row and the lockfile

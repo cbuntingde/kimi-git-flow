@@ -200,6 +200,10 @@ test("skillInstructions references the non-negotiable safety rules", () => {
     { name: "no silent revert", re: /silent revert|checkout\s*--|reset\s*--hard|stash drop/i },
     { name: "no branching off unpushed default", re: /unpushed\s*commits?/i },
     { name: "no-Actions merge gate", re: /Actions is unavailable/i },
+    {
+      name: "one branch at a time, nothing left behind",
+      re: /second\s*branch|unmerged|left\s*behind/i,
+    },
   ];
   for (const r of rules) {
     assert.ok(r.re.test(s), `skillInstructions must mention: ${r.name}`);
@@ -494,7 +498,7 @@ test("SKILL.md preflight refuses to proceed when local default branch has unpush
 });
 
 test("SKILL.md step 6 documents all three divergence-recovery options (rebase / merge / reset) with the reset safety gate", () => {
-  const step6 = read(SKILL_FILE).split("### 7. Loop")[0];
+  const step6 = read(SKILL_FILE).split("### 8. Loop")[0];
   for (const opt of ["--rebase", "--no-rebase", "reset --hard"]) {
     assert.ok(step6.includes(opt), `SKILL.md step 6 must mention the '${opt}' divergence-recovery path`);
   }
@@ -505,7 +509,103 @@ test("SKILL.md step 6 documents all three divergence-recovery options (rebase / 
   );
 });
 
-test("soft-rule 4 in safety.md gates `git reset --hard` on every local commit being reachable from origin", () => {
+test("SKILL.md preflight refuses to start while another branch or pull request is open (step 0g)", () => {
+  const preflight = read(SKILL_FILE).split("### 1. Create the branch")[0];
+  assert.ok(
+    /git for-each-ref --format='%\(refname:short\)' refs\/heads\//.test(preflight),
+    "step 0g must enumerate local branches via git for-each-ref",
+  );
+  assert.ok(/grep -vx "\$DEFAULT_BRANCH"/.test(preflight), "step 0g must exclude the default branch from the leftover list");
+  assert.ok(
+    /gh pr list --state open --json number,headRefName/.test(preflight),
+    "step 0g must refuse while any pull request is open",
+  );
+  assert.ok(
+    /aborted: a branch is already open/.test(preflight) && /aborted: a pull request is already open/.test(preflight),
+    "step 0g must print both abort messages",
+  );
+  assert.ok(
+    references(preflight, "no-leftovers.md"),
+    "step 0g must cross-link references/no-leftovers.md",
+  );
+});
+
+test("SKILL.md step 7 closes the loop with the four leftover checks", () => {
+  const step7 = read(SKILL_FILE).split("### 7. Nothing left behind")[1]?.split("### 8. Loop")[0] ?? "";
+  assert.ok(step7.length > 0, "SKILL.md must have a step 7 named 'Nothing left behind'");
+  for (const cmd of ["git status --porcelain", "git branch", "git stash list"]) {
+    assert.ok(step7.includes(cmd), `step 7 must run \`${cmd}\``);
+  }
+  assert.ok(
+    /git log --oneline origin\/main\.\.main/.test(step7),
+    "step 7 must check that the default branch is not ahead of origin",
+  );
+  assert.ok(/references\/no-leftovers\.md/.test(step7), "step 7 must cross-link references/no-leftovers.md");
+});
+
+test("the branch delete is never silenced, so an unmerged branch cannot be hidden", () => {
+  // `git branch -d` refuses to delete an unmerged branch. That refusal is the
+  // only signal step 5 did not land; `|| true` discards it and reports success.
+  const silenced = /git branch -d\s+\S+[^`\n]*\|\|\s*true/;
+  for (const rel of [SKILL_FILE, "commands/merge.md"]) {
+    assert.ok(!silenced.test(read(rel)), `${rel} must not silence \`git branch -d\` with \`|| true\``);
+  }
+  assert.ok(
+    /git branch -d <branch>\s*$/m.test(read(SKILL_FILE)),
+    "SKILL.md step 6 must run an unsilenced `git branch -d <branch>`",
+  );
+  // no-leftovers.md is the one file allowed to contain the silenced form,
+  // because it documents the regression. Require the quote, so deleting the
+  // explanation fails here rather than passing quietly.
+  assert.ok(
+    silenced.test(read("skills/git-flow/references/no-leftovers.md")),
+    "no-leftovers.md must keep quoting the old silenced form as the failure it replaced",
+  );
+});
+
+test("a failed step 2.5 pushes the branch before aborting, so nothing is local-only", () => {
+  const step25 = read(SKILL_FILE).split("### 2.5 Local check")[1]?.split("### 3.")[0] ?? "";
+  assert.ok(step25.length > 0, "SKILL.md must still have a step 2.5");
+  assert.ok(
+    /push the branch before stopping/i.test(step25),
+    "step 2.5 must require the branch to be pushed on any post-commit abort",
+  );
+  assert.ok(
+    /git push -u origin <branch>/.test(step25),
+    "step 2.5 must name the exact push command",
+  );
+  assert.ok(references(step25, "no-leftovers.md"), "step 2.5 must cross-link references/no-leftovers.md");
+});
+
+test("safety.md documents rule 13 (no leftovers) and no-leftovers.md carries both checks", () => {
+  const safety = read("skills/git-flow/references/safety.md");
+  assert.ok(/13\.\s*\*\*No leftovers\.\*\*/.test(safety), "safety.md must document rule 13: No leftovers");
+  assert.ok(
+    /step 0g/.test(safety) && /step 7/.test(safety),
+    "rule 13 must name both the preflight (0g) and the end-of-run check (7)",
+  );
+  assert.ok(references(safety, "no-leftovers.md"), "rule 13 must cross-link references/no-leftovers.md");
+
+  const doc = read("skills/git-flow/references/no-leftovers.md");
+  assert.ok(
+    /git for-each-ref --format='%\(refname:short\)' refs\/heads\//.test(doc),
+    "no-leftovers.md must document the local-branch check",
+  );
+  assert.ok(/gh pr list --state open/.test(doc), "no-leftovers.md must document the open-pull-request check");
+  for (const cmd of ["git status --porcelain", "git branch", "git stash list"]) {
+    assert.ok(doc.includes(cmd), `no-leftovers.md must document \`${cmd}\``);
+  }
+  assert.ok(
+    /push the branch before stopping/i.test(doc),
+    "no-leftovers.md must state the never-local-only rule",
+  );
+});
+
+test("every command that can leave a branch open cross-links no-leftovers.md", () => {
+  for (const rel of ["commands/branch.md", "commands/merge.md", "commands/back-to-main.md", "commands/status.md"]) {
+    assert.ok(references(read(rel), "no-leftovers.md"), `${rel} must cross-link references/no-leftovers.md`);
+  }
+});test("soft-rule 4 in safety.md gates `git reset --hard` on every local commit being reachable from origin", () => {
   const softRules = read("skills/git-flow/references/safety.md").split("## Abort message format")[0];
   assert.ok(/`git pull --ff-only` fails after merge/.test(softRules), "soft-rule 4 must still cover the `git pull --ff-only` failure case");
   assert.ok(

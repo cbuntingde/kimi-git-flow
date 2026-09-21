@@ -25,13 +25,16 @@ audit what the procedure will do without creating a branch.
 
 1. Preflight (see `skills/git-flow/SKILL.md` step 0): confirm git repo,
    `gh auth`, clean working tree, and detect default branch.
-2. Resolve the branch name per
+2. Refuse to continue when another branch or pull request is already
+   open (step 0g), naming what was found. One branch at a time — see
+   `skills/git-flow/references/no-leftovers.md`.
+3. Resolve the branch name per
    `skills/git-flow/references/branch-naming.md`. Cap the slug at 48
    chars. Append `-2`, `-3`, ... on collision.
-3. `git fetch origin "<default-branch>"`. Quote the ref: a branch name is
+4. `git fetch origin "<default-branch>"`. Quote the ref: a branch name is
    remote-controlled and may contain shell metacharacters.
-4. `git checkout -b "<branch>" "origin/<default-branch>"`.
-5. Print the resolved branch name and stop. **Do not commit, push, or
+5. `git checkout -b "<branch>" "origin/<default-branch>"`.
+6. Print the resolved branch name and stop. **Do not commit, push, or
    open a PR** — that's the user's next step.
 
 ## When not to use
@@ -40,14 +43,19 @@ audit what the procedure will do without creating a branch.
   trigger ("rename X to Y", "fix the Y bug") and the skill handles it.
 - The user wants to push and open a PR right now. Use
   `/kimi-git-flow:pr` after `/kimi-git-flow:branch` instead.
+- Another branch is already open. Finish or abandon that one first;
+  this command refuses rather than creating a second.
 
 ## Safety
 
-This command refuses to run on a dirty working tree. If `gh` is not
-authenticated, it prints the exact `gh auth login` command and stops.
+This command refuses to run on a dirty working tree, and refuses to run
+while another local branch or an open pull request exists. If `gh` is
+not authenticated, it prints the exact `gh auth login` command and stops.
 
 ## See also
 
 - `/kimi-git-flow:pr` — push and open the PR for the current branch.
 - `skills/git-flow/SKILL.md` step 0–1 — full preflight + branch
   creation logic.
+- `skills/git-flow/references/no-leftovers.md` — why only one branch may
+  be open at a time.
