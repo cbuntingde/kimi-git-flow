@@ -8,6 +8,18 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A Bun project silently ran `npm test` instead of its own `verify`
+  gate.** The step 2.5 detection matrix had no Bun row and the lockfile
+  precedence knew only `pnpm-lock.yaml` and `yarn.lock`, so a project
+  carrying `bun.lock` with a `scripts.verify` definition of done fell
+  through to the generic node row and ran a *subset* of its real gate.
+  Because step 2.5 is the merge gate when Actions is unavailable, that
+  made the gate silently weaker than the project's own definition of
+  done. Bun is now detected first, keyed on `bun.lock` / `bun.lockb`,
+  and runs `bun run verify` when `scripts.verify` is declared, falling
+  back to `bun test` so a missing `verify` script is not reported as a
+  failure.
+
 - **`npm run lint:links` ran the whole suite.** `--test-name-pattern` placed
   after the test-file path is ignored by Node, so the script was no faster than
   `npm test`. The flag now precedes the path, and a guard asserts the ordering
