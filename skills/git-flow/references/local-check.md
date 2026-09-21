@@ -38,6 +38,7 @@ First match wins. Detection is shallow: each marker is a single
 
 | Marker                              | Stack  | Command                                                       |
 |-------------------------------------|--------|---------------------------------------------------------------|
+| `package.json` with `bun.lock` or `bun.lockb` | bun | `bun run verify` when `scripts.verify` is declared, else `bun test` |
 | `package.json` with `"scripts.test"` | node   | `npm test --if-present` (or `pnpm test` if `pnpm-lock.yaml`, `yarn test` if `yarn.lock`) |
 | `pyproject.toml` or `setup.py`      | python | `pytest -q` (fallback: `python -m unittest discover -s tests`) |
 | `Cargo.toml`                        | rust   | `cargo test --quiet`                                          |
@@ -45,13 +46,28 @@ First match wins. Detection is shallow: each marker is a single
 | `Makefile` containing `^test:`      | make   | `make test`                                                   |
 | none                                | none   | skip                                                          |
 
-Lockfile precedence for Node: `pnpm-lock.yaml` → `pnpm test`;
-`yarn.lock` → `yarn test`; otherwise `npm test --if-present`. This
-matches the user's actual install path and avoids running the wrong
-package manager against a stale lockfile.
+Lockfile precedence for Node: a Bun lockfile (`bun.lock` or
+`bun.lockb`) is matched **before** the generic node row; then
+`pnpm-lock.yaml` → `pnpm test`; `yarn.lock` → `yarn test`; otherwise
+`npm test --if-present`. The lockfile is the authoritative signal for
+which package manager a project actually uses — the same reason pnpm
+and yarn outrank npm instead of falling through to it. This matches
+the user's actual install path and avoids running the wrong package
+manager against a stale lockfile.
 
 ## Runner choices — why each one
 
+- **`bun run verify`, else `bun test`** — a Bun project that declares a
+  `verify` script is declaring its own definition of done, and step 2.5
+  *is* the merge gate when Actions is unavailable, so running the
+  narrower `bun test` would silently weaken that gate. The `bun test`
+  fallback exists because `bun run verify` exits 1 with
+  `Script not found "verify"` when no such script is declared — without
+  it, a Bun project that never claimed a `verify` script would report
+  `fail`. Detection keys on the lockfile, not on `bunfig.toml` alone:
+  `bunfig.toml` is optional and configures Bun's own behaviour rather
+  than recording which package manager installed the tree, so a repo can
+  carry it while installing with npm.
 - **`npm test --if-present`** — matches the default `npm test`
   convention; falls through silently when the project has no `test`
   script in `package.json`. Honors the user's npm config.
@@ -70,15 +86,18 @@ package manager against a stale lockfile.
 Default 300 seconds per check. Override with
 `KIMI_GIT_FLOW_LOCAL_CHECK_TIMEOUT` (in seconds). Long enough for a
 slow cold `cargo test`, short enough not to hang the workflow forever.
-On timeout, the check is reported as `fail` with a one-line reason
-(`local check timed out after 300s`).
+A composite `verify` script (type check + lint + format + tests) is
+materially slower than a single test runner, so a large repository may
+need `KIMI_GIT_FLOW_LOCAL_CHECK_TIMEOUT` raised above the 300 s
+default. On timeout, the check is reported as `fail` with a one-line
+reason (`local check timed out after 300s`).
 
 ## Result format
 
 Print exactly one line, never a paragraph:
 
 ```
-local check: stack=<node|python|rust|go|make|none> command="<cmd>" result=<pass|fail|skipped> duration=<Ns>
+local check: stack=<bun|node|python|rust|go|make|none> command="<cmd>" result=<pass|fail|skipped> duration=<Ns>
 ```
 
 On `fail`, also print the last 50 lines of the runner output, then

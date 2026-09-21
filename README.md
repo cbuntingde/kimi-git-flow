@@ -20,8 +20,8 @@ checks to pass, and lands the change for you.
   tests and other checks GitHub runs on your behalf) to pass, then lands
   the change and switches your workspace back to the main line of work.
 - **Local sanity check.** Even if your repository has no automated
-  checks configured, the plugin detects your project's stack (Node,
-  Python, Rust, Go, or Make) and runs the equivalent of CI on the
+  checks configured, the plugin detects your project's stack (Bun,
+  Node, Python, Rust, Go, or Make) and runs the equivalent of CI on the
   working tree before pushing — so obvious failures don't reach the
   review request.
 - **Optional CI scaffold.** If your repo has no `.github/workflows/`
