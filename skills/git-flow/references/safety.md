@@ -78,6 +78,27 @@ rule has a clear, user-visible abort message.
     later 3-way merge conflict), resetting it (where it is lost for
     good), or branching off it (where the branch base no longer
     matches what the user expects on `origin`).
+13. **No leftovers.** One branch at a time, and it runs to merged
+    before the next one starts. Two things are checked, at opposite
+    ends of the run:
+
+    - **Before creating a branch (step 0g)** — no other local branch
+      may exist and no pull request may be open. Abort and name what
+      was found. A branch the user manages by hand fires this too;
+      report it, do not delete it.
+    - **After the run (step 7)** — `git status --porcelain`,
+      `git branch`, `git log origin/<default>..<default>` and
+      `git stash list` must all print nothing.
+
+    On any abort after the commit, **push the branch before stopping**.
+    An unpushed branch is work that exists in exactly one place, and it
+    is indistinguishable from work that was never done.
+
+    Step 6 must not silence `git branch -d` with `|| true`. `-d`
+    refuses to delete an unmerged branch, and that refusal is the only
+    signal that step 5 did not land. Never substitute `-D`.
+
+    The full contract is in `references/no-leftovers.md`.
 
 ## Soft rules (warn but proceed)
 
@@ -123,6 +144,9 @@ Examples:
 - `aborted: branch protection requires 1 approving review. Ask a reviewer to approve PR #42 before merging.`
 - `aborted: local main is 1 commit(s) ahead of origin/main. Push (\`git push origin main\`), rebase, or drop before starting a new branch.`
 - `aborted: silent revert blocked. \`git reset --hard\` would discard 1 unpushed commit(s). Push, rebase, or drop them before resetting.`
+- `aborted: a branch is already open. Finish or abandon it before starting another: \`fix/login-redirect\`.`
+- `aborted: a pull request is already open. Finish it before starting another branch: #42 \`fix/login-redirect\`.`
+- `aborted: local check failed, branch pushed. \`bun run verify\` exited 1; tail printed above. Push a follow-up commit on \`fix/login-redirect\` and re-run — the branch is on origin with no pull request.`
 
 Never bury the abort reason in a paragraph. One line, scannable.
 

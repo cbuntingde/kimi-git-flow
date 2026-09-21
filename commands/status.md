@@ -41,6 +41,12 @@ In order:
    `merged`, `abandoned`, or `null` when no run has happened on this
    branch yet. The enum covers both push and PR opening under a single
    value (`pr-opened`); see `skills/git-flow/references/state.md`.
+9. **Leftovers** (step 7 of the procedure) — every local branch other
+   than the default, and every open pull request, one line each. This is
+   the read that answers "is anything still open?", which is the
+   preflight condition step 0g refuses on. Print `none` when both are
+   empty, so a clean tree is stated rather than implied. See
+   `skills/git-flow/references/no-leftovers.md`.
 
 The output is plain text, suitable for pasting back to the user.
 
@@ -62,3 +68,5 @@ mid-merge, mid-watch, or with a dirty working tree.
 - `/kimi-git-flow:branch`, `/kimi-git-flow:pr`, `/kimi-git-flow:watch`,
   `/kimi-git-flow:merge`, `/kimi-git-flow:back-to-main` — the
   side-effecting siblings.
+- `skills/git-flow/references/no-leftovers.md` — what the leftovers line
+  above is reporting on, and why it blocks the next branch.
